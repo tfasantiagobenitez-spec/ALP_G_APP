@@ -488,31 +488,284 @@ def build_manual():
     doc.add_page_break()
 
     # -------------------------------------------------------------
-    # SECCIÓN 5: FORMULACIÓN MATEMÁTICA Y ALGORITMOS
+    # SECCIÓN 5: FORMULACIÓN MATEMÁTICA, MODELOS FÍSICOS Y ALGORITMOS DE INGENIERÍA
     # -------------------------------------------------------------
-    h1 = doc.add_heading("5. Formulación Matemática y Algoritmos de Ingeniería", level=1)
+    h1 = doc.add_heading("5. Formulación Matemática, Modelos Físicos y Algoritmos de Ingeniería", level=1)
     h1.runs[0].font.color.rgb = RGBColor(0, 159, 227)
     
-    formulas = [
-        ("1. Valor Actual Neto (VAN):", "VAN = -CAPEX + ∑ [ Flujo_t / (1 + r)^t ]\nDonde r es la tasa de descuento anual (WACC) y Flujo_t es el ahorro neto del año t."),
-        ("2. Tasa Interna de Retorno (TIR):", "Tasa r* que satisface: VAN(r*) = 0.\nEl motor calcula la raíz mediante el algoritmo de bisección numérica con convergencia de 10^-7."),
-        ("3. Costo Nivelado de la Energía (LCOE):", "LCOE = [ CAPEX + ∑ (OPEX_t + Recambio_t)/(1+r)^t ] / [ ∑ Generacion_t/(1+r)^t ]\nPermite comparar directamente el costo solar ($/kWh o USD/kWh) contra la tarifa de red."),
-        ("4. Payback con Interpolación Lineal:", "Payback = (t - 1) + [ |Flujo_Acumulado_{t-1}| / Flujo_t ]\nCalcula con precisión de fracción de año el momento exacto en que se recupera la inversión."),
-        ("5. Degradación e Inflación Compuesta:", "Generacion_t = Generacion_1 × (1 - d)^(t-1)\nAhorro_t = Ahorro_1 × (1 - d)^(t-1) × (1 + inf)^(t-1)\nDonde d es la degradación anual (ej: 0.5%/año) e inf es el aumento tarifario anual."),
-        ("6. Autonomía del Banco de Baterías (BESS):", "Capacidad_Util = Capacidad_Nominal × (DoD % / 100)\nAutonomia_Horas = Capacidad_Util / Demanda_Media_Horaria"),
-        ("7. Escudo Fiscal del Leasing en Ganancias:", "Ahorro_Impositivo = (∑ Canones + ∑ Seguros + ∑ Mantenimientos) × Alícuota_Ganancias\nCosto_Neto = Pago_Inicial + ∑ Canones + ∑ Seguros + ∑ Mtto + Opcion_Compra − Ahorro_Impositivo")
-    ]
+    doc.add_paragraph(
+        "Esta sección documenta de manera exhaustiva el fundamento teórico, las leyes físicas, las normas internacionales "
+        "y los modelos matemáticos y financieros implementados en el motor de cálculo (calc.js) del Simulador Fotovoltaico de ALP GROUP."
+    )
+
+    # 5.1. Generación Solar
+    doc.add_heading("5.1. Modelo Físico de Radiación Solar y Generación Fotovoltaica", level=2)
+    doc.add_paragraph(
+        "La estimación de producción eléctrica anual y mensual se calcula a partir de la potencia pico instalada (kWp), "
+        "la irradiación global horizontal/inclinada anual del sitio (kWh/m²/año) y el Performance Ratio (PR) del sistema:"
+    )
     
-    for tit, form in formulas:
-        p = doc.add_paragraph()
-        r_t = p.add_run(tit + "\n")
-        r_t.bold = True
-        r_t.font.color.rgb = RGBColor(0, 159, 227)
-        r_f = p.add_run(form)
-        r_f.font.name = "Consolas"
-        r_f.font.size = Pt(9.5)
-        r_f.font.color.rgb = RGBColor(30, 41, 59)
-        p.paragraph_format.space_after = Pt(6)
+    box_gen = (
+        "1. Generación Eléctrica Anual Año 1 (kWh/año):\n"
+        "   E_anual = P_kWp × H_anual × (PR / 100)\n\n"
+        "2. Rendimiento Específico / Yield del Sistema (kWh/kWp/año):\n"
+        "   Y_f = E_anual / P_kWp = H_anual × (PR / 100)\n\n"
+        "3. Distribución Estacional Mensual (kWh/mes):\n"
+        "   E_gen,m = E_anual × f_m   (para m = 1, 2, ..., 12)\n\n"
+        "   Donde f_m es el vector de coeficientes normalizados para el Hemisferio Sur (Centro/Norte de Argentina):\n"
+        "   f = [Ene: 0.1094, Feb: 0.0979, Mar: 0.0891, Abr: 0.0736, May: 0.0591, Jun: 0.0502,\n"
+        "        Jul: 0.0532, Ago: 0.0676, Sep: 0.0835, Oct: 0.0986, Nov: 0.1065, Dic: 0.1113]  (∑ f_m = 1.0000)"
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_gen)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    # 5.2. Pérdidas y PR
+    doc.add_heading("5.2. Modelo Físico de Pérdidas Técnicas y Performance Ratio (PR)", level=2)
+    doc.add_paragraph(
+        "El Performance Ratio (PR) evalúa la calidad global de la instalación descontando las atenuaciones energéticas en cascada:"
+    )
+    
+    t_loss = doc.add_table(rows=8, cols=3)
+    t_loss.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t_loss.cell(0, 0).text = "Etapa / Factor de Pérdida"
+    t_loss.cell(0, 1).text = "Coeficiente (%)"
+    t_loss.cell(0, 2).text = "Fundamento Físico y Normativo"
+    format_row(t_loss.rows[0], "009FE3", RGBColor(255, 255, 255), is_bold=True, font_size=9.5)
+    
+    loss_data = [
+        ("Temperatura de Celdas (P_temp)", "4.2% - 6.2%", "Coeficiente térmico de potencia γ_Pmp (~ -0.35%/°C) sobre 25°C STC. Varia según ventilación (Chapa: 6.2%, Losa: 4.9%, Suelo: 4.2%)."),
+        ("Suciedad Superficial (Soiling)", "3.0%", "Atenuación óptica por deposición de polvo, polvillo agrícola y hollín ambiental sobre el vidrio frontal."),
+        ("Mismatch / Tolerancia Fabril", "1.5%", "Dispersión de parámetros I-V entre módulos conectados en serie y curvas de máxima potencia (MPPT)."),
+        ("Cableado Continuo DC (Joule)", "1.2%", "Pérdidas resistivas I²R en conductores solares de 4/6 mm² desde strings hasta inversores."),
+        ("Eficiencia del Inversor (η_inv)", "2.1%", "Rendimiento ponderado de conversión DC a AC trifásica/monofásica (eficiencia típica 97.9%)."),
+        ("Cableado Alterno AC (Joule)", "0.8%", "Caída óhmica de tensión entre bornes de salida del inversor y el tablero general de baja tensión."),
+        ("Performance Ratio Resultante", "83.0% - 86.0%", "PR = ∏ (1 - Pérdida_i). Rendimiento neto global del generador solar entregado a la red.")
+    ]
+    for i, (k, v, desc) in enumerate(loss_data):
+        t_loss.cell(i+1, 0).text = k
+        t_loss.cell(i+1, 1).text = v
+        t_loss.cell(i+1, 2).text = desc
+        bg = "E0F2FE" if i == 6 else ("F8FAFC" if i % 2 == 0 else "FFFFFF")
+        format_row(t_loss.rows[i+1], bg, RGBColor(2, 132, 199) if i == 6 else RGBColor(51, 65, 85), is_bold=(i==6), font_size=8.5)
+    
+    t_loss.columns[0].width = Inches(2.2)
+    t_loss.columns[1].width = Inches(1.2)
+    t_loss.columns[2].width = Inches(3.1)
+    doc.add_paragraph().paragraph_format.space_after = Pt(6)
+
+    # 5.3. Balance Energético
+    doc.add_heading("5.3. Modelo de Balance Energético y Autoconsumo", level=2)
+    doc.add_paragraph(
+        "Para cada mes m del año (m = 1, ..., 12), el sistema determina la interacción con la red eléctrica:"
+    )
+    
+    box_balance = (
+        "1. Autoconsumo Solar Directo Mensual (kWh/mes):\n"
+        "   E_auto,m = min( E_gen,m , E_con,m )\n\n"
+        "2. Excedente Solar Mensual a Red (kWh/mes):\n"
+        "   E_exc,m = max( E_gen,m - E_con,m , 0 )\n\n"
+        "3. Energía Neta Importada de la Red (kWh/mes):\n"
+        "   E_red,m = max( E_con,m - E_gen,m , 0 )\n\n"
+        "4. Grado de Cobertura Solar de la Demanda (%):\n"
+        "   Cobertura (%) = [ ∑ E_auto,m / ∑ E_con,m ] × 100\n\n"
+        "5. Tasa de Aprovechamiento del Generador Solar (%):\n"
+        "   Aprovechamiento (%) = [ ∑ E_auto,m / ∑ E_gen,m ] × 100"
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_balance)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    # 5.4. Curva de 24 Horas y Baterías BESS
+    doc.add_heading("5.4. Modelo de Simulación Horaria de 24 Horas y Almacenamiento con Baterías (BESS)", level=2)
+    doc.add_paragraph(
+        "El motor modela la dinámica horaria (h = 0, ..., 23) superponiendo la campana solar con la curva de demanda del usuario "
+        "y el ciclo de carga/descarga del banco de baterías:"
+    )
+    
+    box_bess = (
+        "1. Generación Solar Horaria Media Diaria (kWh):\n"
+        "   E_gen,h = (E_anual / 365) × f_solar,h\n"
+        "   Donde f_solar es la campana de irradiancia centrada a las 13:00 hs.\n\n"
+        "2. Capacidad Útil del Banco de Baterías (kWh):\n"
+        "   C_util = C_nominal × (DoD% / 100)    (Litio LFP: DoD 80-90%, Gel: DoD 50%)\n\n"
+        "3. Límite de Potencia de Carga/Descarga (kW - Régimen 0.5C):\n"
+        "   P_bat,max = C_util / 2 h\n\n"
+        "4. Dinámica de Carga con Excedente Solar (11:00 a 15:00 hs):\n"
+        "   Bat_carga,h = min( E_exc_bruto,h , C_util - SoC_h , P_bat,max )\n"
+        "   SoC_h+1 = SoC_h + Bat_carga,h × η_carga    (η_carga = 95%)\n\n"
+        "5. Dinámica de Descarga en Horario Pico Nocturno (18:00 a 22:00 hs):\n"
+        "   Bat_descarga,h = min( E_red_bruto,h , SoC_h , P_bat,max )\n"
+        "   SoC_h+1 = SoC_h - Bat_descarga,h\n\n"
+        "6. Autoconsumo Total Integrado con Baterías:\n"
+        "   E_auto_total,h = E_auto_directo,h + Bat_descarga,h\n\n"
+        "7. Autonomía del Sistema de Respaldo (Horas):\n"
+        "   Autonomia = C_util / (E_con_anual / 8760 h)"
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_bess)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    # 5.5. Algoritmos de Dimensionamiento
+    doc.add_heading("5.5. Algoritmos de Dimensionamiento Automatizado", level=2)
+    doc.add_paragraph(
+        "El asistente de dimensionamiento implementa dos algoritmos matemáticos determinísticos:"
+    )
+    
+    box_dim = (
+        "A. ALGORITMO POR SUPERFICIE DE CUBIERTA DISPONIBLE:\n"
+        "   1. Superficie útil efectiva:    A_util = A_techo × f_cubierta\n"
+        "      (f_cubierta: Chapa coplanar = 0.75, Losa plana = 0.55, Teja = 0.65, Suelo = 0.50)\n"
+        "   2. Módulos fotovoltaicos:       N_paneles = ⌊ A_util / 2.58 m² ⌋   (Panel tipo 575 Wp)\n"
+        "   3. Potencia pico instalable:    P_kWp = (N_paneles × 575 Wp) / 1000\n"
+        "   4. Sobrecarga estática total:   W_total = N_paneles × 28.5 kg + A_util × (w_cubierta - 11 kg/m²)\n\n"
+        "B. ALGORITMO POR OBJETIVO DE COBERTURA ENERGÉTICA (%):\n"
+        "   1. Energía objetivo anual:      E_obj = E_con_anual × (Cobertura% / 100)\n"
+        "   2. Rendimiento específico sitio: Yield = H_anual × (PR / 100)\n"
+        "   3. Potencia pico requerida:     P_kWp_req = E_obj / Yield\n"
+        "   4. Cantidad entera de paneles:  N_paneles = ⌈ (P_kWp_req × 1000) / P_panel ⌉\n"
+        "   5. Superficie de techo mínima:  A_min = (N_paneles × 2.58 m²) / f_cubierta"
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_dim)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    # 5.6. Modelo Tarifario y Ahorro
+    doc.add_heading("5.6. Modelo Tarifario e Impuestos Eléctricos", level=2)
+    doc.add_paragraph(
+        "El ahorro monetario del cliente se calcula valorizando el autoconsumo a la tarifa completa con impuestos:"
+    )
+    
+    box_tarifa = (
+        "1. Tarifa Plena con Impuestos ($/kWh):\n"
+        "   T_full = T_base × [ 1 + ( ∑ Impuestos% ) / 100 ]\n\n"
+        "2. Ahorro Económico del Año 1 ($/año):\n"
+        "   Ahorro_1 = ∑ [ E_auto,m × T_full + E_exc,m × T_inyeccion ]   (para m = 1..12)\n\n"
+        "3. Ahorro Anual Año 1 en Dólares (USD/año):\n"
+        "   Ahorro_1_USD = Ahorro_1 / Tipo_de_Cambio"
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_tarifa)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    # 5.7. Modelo Financiero de Compra Directa
+    doc.add_heading("5.7. Modelo Financiero de Compra Directa (Flujo de Fondos, VAN, TIR, Payback y LCOE)", level=2)
+    doc.add_paragraph(
+        "Modela el flujo de caja dinámico a lo largo de 20 a 30 años incorporando degradación de celdas, inflación energética, OPEX y recambio de inversores:"
+    )
+    
+    box_fin = (
+        "1. Inversión Inicial Total (CAPEX):\n"
+        "   CAPEX_USD = (P_kWp × Costo_kWp) + (C_bat_kWh × Costo_bat_kWh)\n"
+        "   CAPEX_ARS = CAPEX_USD × Tipo_de_Cambio\n\n"
+        "2. Flujo de Fondos del Año t (t = 1, 2, ..., N):\n"
+        "   • Generación año t:       E_gen,t = E_anual × (1 - d)^(t-1)          (d: degradación anual ~0.5%)\n"
+        "   • Ahorro energético t:    Ahorro_t = Ahorro_1 × (1 - d)^(t-1) × (1 + inf)^(t-1)   (inf: inflación anual)\n"
+        "   • Gasto OPEX año t:       OPEX_t = CAPEX_ARS × (OPEX% / 100) × (1 + inf)^(t-1)\n"
+        "   • Recambio Inversor t:    Recambio_t = CAPEX_ARS × (Recambio% / 100) × (1 + inf)^(t-1)  (si t mod k = 0)\n"
+        "   • Flujo Neto Nominal:     Flujo_t = Ahorro_t - OPEX_t - Recambio_t\n\n"
+        "3. Valor Actual Neto (VAN):\n"
+        "   VAN = -CAPEX + ∑ [ Flujo_t / (1 + r)^t ]    (r: tasa de descuento WACC)\n\n"
+        "4. Tasa Interna de Retorno (TIR):\n"
+        "   Tasa r* que satisface la ecuación no lineal: VAN(r*) = 0\n"
+        "   (Calculada numéricamente mediante algoritmo de bisección con convergencia |f(r)| < 10^-7).\n\n"
+        "5. Período de Recupero de la Inversión (Payback Simple con Interpolación Lineal):\n"
+        "   Payback = (t - 1) + [ |Flujo_Acumulado_{t-1}| / Flujo_t ]\n\n"
+        "6. Costo Nivelado de la Energía (LCOE - Levelized Cost of Energy):\n"
+        "   LCOE = [ CAPEX + ∑ ( (OPEX_t + Recambio_t) / (1 + r)^t ) ] / [ ∑ ( E_gen,t / (1 + r)^t ) ]"
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_fin)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    # 5.8. Modelo de Leasing
+    doc.add_heading("5.8. Modelo Financiero de Leasing Solar y Escudo Fiscal", level=2)
+    doc.add_paragraph(
+        "Modela el contrato de leasing operativo/financiero y cuantifica el beneficio impositivo en Ganancias:"
+    )
+    
+    box_leasing = (
+        "1. Canon Mensual de Leasing (USD/mes):\n"
+        "   Canon_mes = Canon_unitario_kWp × P_kWp\n\n"
+        "2. Costo Total Bruto del Contrato de Leasing (USD):\n"
+        "   Costo_bruto = Pago_Inicial + (Canon_mes × Plazo_meses) + ∑ Seguros + ∑ Mantenimientos + Opcion_Compra\n\n"
+        "3. Escudo Fiscal en Impuesto a las Ganancias (USD):\n"
+        "   Gasto_Deducible = (Canon_mes × Plazo_meses) + ∑ Seguros + ∑ Mantenimientos\n"
+        "   Ahorro_Ganancias = Gasto_Deducible × (Alícuota_Ganancias / 100)    (Alícuota: 30% o 35%)\n\n"
+        "4. Costo Neto Efectivo del Leasing (USD):\n"
+        "   Costo_neto = Costo_bruto - Ahorro_Ganancias\n\n"
+        "5. Flujo Mensual Neto Operativo (USD/mes):\n"
+        "   Flujo_mes = Ahorro_Solar_mes - [ Canon_mes + (Seguro_anual + Mtto_anual) / 12 ]\n"
+        "   (Si Flujo_mes > 0, el sistema genera excedente de caja positivo desde el primer mes)."
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_leasing)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    # 5.9. Análisis de Sensibilidad
+    doc.add_heading("5.9. Modelo de Análisis de Sensibilidad Bidimensional", level=2)
+    doc.add_paragraph(
+        "Construye matrices matriciales cruzadas de evaluación de riesgo evaluando simultáneamente dos perturbaciones:"
+    )
+    
+    box_sens = (
+        "1. Matriz Tarifa Eléctrica vs. CAPEX:\n"
+        "   Grid de 5 × 5 nodos: ΔTarifa ∈ {-20%, -10%, 0%, +10%, +20%}  ×  ΔCAPEX ∈ {-15%, -10%, 0%, +10%, +15%}\n"
+        "   Para cada nodo (i, j), el motor recalcula el modelo completo y extrae: VAN, TIR y Payback.\n\n"
+        "2. Matriz Inflación Tarifaria vs. Tasa de Descuento (WACC):\n"
+        "   Grid de 5 × 4 nodos: WACC ∈ {6%, 8%, 10%, 12%, 15%}  ×  ΔInflación ∈ {-5%, 0%, +5%, +10%}\n"
+        "   Permite identificar el umbral de viabilidad (puntos donde VAN > 0 y TIR > WACC)."
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_sens)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    # 5.10. Impacto Ambiental ESG
+    doc.add_heading("5.10. Modelo de Descarbonización e Impacto Ambiental (ESG)", level=2)
+    doc.add_paragraph(
+        "Cuantifica los beneficios ecológicos a partir del factor de emisión de la matriz eléctrica argentina (SADI):"
+    )
+    
+    box_esg = (
+        "1. Toneladas de CO₂ Evitadas Anualmente (Ton CO₂/año):\n"
+        "   CO2_anual = ( E_anual × FE_red ) / 1000      (FE_red = 0.45 kg CO₂/kWh - Factor SADI CAMMESA)\n\n"
+        "2. Toneladas de CO₂ Evitadas en la Vida Útil (Ton CO₂ Total):\n"
+        "   CO2_total = [ ( ∑ E_gen,t ) × FE_red ] / 1000\n\n"
+        "3. Árboles Plantados Equivalentes:\n"
+        "   Arboles_Eq = ( CO2_anual × 1000 kg ) / 21.7 kg CO₂/árbol/año\n\n"
+        "4. Kilómetros no Emitidos en Automóvil Convencional:\n"
+        "   Km_Auto_Eq = ( CO2_anual × 1000 kg ) / 0.19 kg CO₂/km"
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_esg)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
 
     # -------------------------------------------------------------
     # SECCIÓN 6: FAQ Y BUENAS PRÁCTICAS
