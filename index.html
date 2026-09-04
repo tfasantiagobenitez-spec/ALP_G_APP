@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulador FV · Análisis Técnico-Económico</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="cabecera">
+    <div class="brand">
+      <span class="brand-icon">☀️</span>
+      <span>Simulador FV</span>
+      <small>análisis técnico-económico solar</small>
+    </div>
+    <div class="usuario" id="usuario"></div>
+    <div class="acciones">
+      <select class="btn btn-sm" id="selPlantilla" title="Cargar plantilla predefinida">
+        <option value="">⚡ Plantillas rápidas</option>
+        <option value="residencial">🏠 Residencial (5 kWp)</option>
+        <option value="comercial">🏢 Comercial Pyme (30 kWp)</option>
+        <option value="industrial">🏭 Industrial (150 kWp)</option>
+        <option value="parque">⚡ Gran Usuario (500 kWp)</option>
+      </select>
+      <button class="btn" id="btnNuevo" title="Nuevo proyecto">＋ Nuevo</button>
+      <button class="btn" id="btnImportar" title="Importar JSON de proyectos">⬆ Importar</button>
+      <button class="btn" id="btnExportarTodo" title="Descargar todos los proyectos en JSON">⬇ Exportar todo</button>
+      <button class="btn" id="btnConfigMembrete" title="Configurar datos y logo de tu empresa para la propuesta">🏢 Membrete</button>
+      <button class="btn btn-icon" id="btnTema" title="Cambiar modo claro / oscuro">🌙</button>
+      <button class="btn" id="btnMigrar" title="Subir a la nube los proyectos guardados en este navegador" hidden>☁ Subir locales</button>
+      <button class="btn" id="btnLogout" hidden>Salir</button>
+      <input type="file" id="fileImport" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="lateral">
+      <div class="lateral-header">
+        <input type="search" id="buscar" placeholder="Buscar proyecto o cliente…">
+      </div>
+      <ul id="lista" class="lista"></ul>
+      <div class="pie" id="contador"></div>
+    </aside>
+
+    <main id="main" class="principal sin-proyecto">
+      <div class="placeholder">
+        <div style="font-size: 40px; margin-bottom: 12px;">☀️</div>
+        <h3>Simulador Fotovoltaico</h3>
+        <p>Seleccioná un proyecto existente de la lista, cargá una plantilla rápida o creá un nuevo análisis.</p>
+      </div>
+
+      <div class="contenido">
+        <div class="barra">
+          <input type="text" id="nombre" class="nombre" placeholder="Nombre del proyecto">
+          <span id="dirty" class="dirty" hidden title="Cambios sin guardar">●</span>
+          <span id="fecha" class="fecha"></span>
+          <div class="acciones">
+            <button class="btn btn-primario" id="btnGuardar" title="Guardar (Ctrl+S)">💾 Guardar</button>
+            <button class="btn" id="btnDuplicar">⧉ Duplicar</button>
+            <button class="btn" id="btnExportar">⬇ Exportar</button>
+            <button class="btn btn-destacado" id="btnVerPropuesta" title="Ver cotización lista para imprimir">📄 Propuesta</button>
+            <button class="btn btn-peligro" id="btnEliminar">🗑 Eliminar</button>
+          </div>
+        </div>
+        <div id="resumen-cabecera" class="resumen-cabecera"></div>
+
+        <nav class="tabs">
+          <button class="tab activa" data-tab="datos">📋 Datos</button>
+          <button class="tab" data-tab="energia">⚡ Energía y CO₂</button>
+          <button class="tab" data-tab="resultados">📈 Resultados</button>
+          <button class="tab" data-tab="leasing">🏦 Leasing vs Contado</button>
+          <button class="tab" data-tab="sensibilidad">🎯 Sensibilidad</button>
+          <button class="tab" data-tab="comparador">⚖️ Comparar</button>
+          <button class="tab" data-tab="propuesta">📄 Propuesta Comercial</button>
+        </nav>
+
+        <!-- Pestaña 1: Datos -->
+        <section id="pane-datos" class="pane activa">
+          <!-- Asistente de Dimensionamiento Rápido -->
+          <div class="asistente-box" id="box-asistente">
+            <div class="asistente-header" id="btnToggleAsistente">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 18px;">📐</span>
+                <strong>Asistente de Dimensionamiento y Superficie de Techo</strong>
+                <span class="badge-tag">Herramienta de cálculo</span>
+              </div>
+              <span id="asistente-icono">▼</span>
+            </div>
+            <div class="asistente-cuerpo" id="asistente-cuerpo" hidden>
+              <div class="asistente-tabs">
+                <button type="button" class="btn btn-sm btn-primario" id="tabDimTecho">🏠 Por Superficie de Techo (m²)</button>
+                <button type="button" class="btn btn-sm" id="tabDimConsumo">🎯 Por Cobertura de Consumo (%)</button>
+              </div>
+
+              <!-- Modo 1: Por Superficie de Techo -->
+              <div id="modo-dim-techo" class="asistente-modo">
+                <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 10px;">
+                  <label class="campo"><span class="etiqueta">Superficie disponible</span><div class="con-unidad"><input type="number" id="dimAreaM2" value="120" min="10"><span class="unidad">m²</span></div></label>
+                  <label class="campo"><span class="etiqueta">Tipo de cubierta</span>
+                    <select id="dimTipoCubierta">
+                      <option value="chapa">Techo de Chapa (Coplanar - factor 75%)</option>
+                      <option value="losa">Losa Plana (Estructura - factor 55%)</option>
+                      <option value="teja">Teja (Recortes - factor 65%)</option>
+                      <option value="tierra">Suelo / Terreno (factor 50%)</option>
+                    </select>
+                  </label>
+                  <label class="campo"><span class="etiqueta">Potencia del panel</span><div class="con-unidad"><input type="number" id="dimPanelWp" value="575"><span class="unidad">Wp</span></div></label>
+                </div>
+                <div class="asistente-resultados" id="res-dim-techo"></div>
+                <div style="margin-top: 10px;">
+                  <button type="button" class="btn btn-primario btn-sm" id="btnAplicarDimTecho">⚡ Aplicar potencia y módulos al proyecto</button>
+                </div>
+              </div>
+
+              <!-- Modo 2: Por Objetivo de Consumo -->
+              <div id="modo-dim-consumo" class="asistente-modo" hidden>
+                <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 10px;">
+                  <label class="campo"><span class="etiqueta">Consumo a cubrir</span><div class="con-unidad"><input type="number" id="dimCoberturaPct" value="75" min="10" max="100"><span class="unidad">%</span></div></label>
+                  <label class="campo"><span class="etiqueta">Consumo anual</span><div class="con-unidad"><input type="number" id="dimConsumoAnual" value="24000"><span class="unidad">kWh/año</span></div></label>
+                </div>
+                <div class="asistente-resultados" id="res-dim-consumo"></div>
+                <div style="margin-top: 10px;">
+                  <button type="button" class="btn btn-primario btn-sm" id="btnAplicarDimConsumo">⚡ Aplicar potencia calculada</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="form-datos"></div>
+        </section>
+
+        <!-- Pestaña 2: Energía -->
+        <section id="pane-energia" class="pane">
+          <h2>⚡ Balance energético mensual (año 1)</h2>
+          <div class="fila-acciones">
+            <button class="btn btn-sm" id="btnEstimarGen">Estimar generación (kWp × irradiación × PR)</button>
+            <button class="btn btn-sm" id="btnRellenarCon">Rellenar consumo constante</button>
+            <span class="hint" id="gen-estimada"></span>
+          </div>
+          <div class="kpis" id="kpi-energia"></div>
+          <div id="chart-energia" class="chart-cont"></div>
+          <div class="scroll"><table class="tabla" id="tabla-energia"></table></div>
+          <p class="hint">"Est." marca los meses cuyo consumo es estimado (sin factura). Autoconsumo = mín(generación, consumo) mensual.</p>
+
+          <h2 style="margin-top: 24px;">⏱ Curva diaria horaria (24 horas)</h2>
+          <p class="hint">Simulación de la curva de campana solar frente al perfil típico de demanda y gestión de almacenamiento con batería.</p>
+          <div id="chart-24h" class="chart-cont"></div>
+
+          <h2 style="margin-top: 24px;">🔬 Diagrama de Eficiencia y Desglose de Pérdidas Técnicas</h2>
+          <p class="hint">Factores físicos y eléctricos que determinan el Performance Ratio (PR) real del sistema.</p>
+          <div id="cont-desglose-perdidas"></div>
+        </section>
+
+        <!-- Pestaña 3: Resultados -->
+        <section id="pane-resultados" class="pane">
+          <div class="fila-acciones" style="justify-content: space-between;">
+            <h2>📈 Indicadores económicos · compra al contado</h2>
+            <div class="fila-acciones">
+              <div class="toggle-moneda">
+                <button class="btn btn-sm btn-primario" id="btnMonedaARS">ARS ($)</button>
+                <button class="btn btn-sm" id="btnMonedaUSD">USD (U$D)</button>
+              </div>
+              <button class="btn btn-sm" id="btnExportarCSV" title="Descargar flujo de caja completo para Excel">📥 Descargar Flujo en Excel (CSV)</button>
+            </div>
+          </div>
+          <div class="kpis" id="kpi-resultados"></div>
+          <h3>Flujo de caja acumulado (<span class="moneda-label">ARS</span>)</h3>
+          <div id="chart-flujo" class="chart-cont"></div>
+          <h3>Detalle anual del proyecto</h3>
+          <div class="scroll"><table class="tabla" id="tabla-flujo"></table></div>
+          <p class="hint">Ahorro = autoconsumo × tarifa con impuestos + excedente × tarifa de inyección. Se aplica degradación anual a la generación y aumento anual a la tarifa y al OPEX.</p>
+        </section>
+
+        <!-- Pestaña 4: Leasing -->
+        <section id="pane-leasing" class="pane">
+          <div class="fila-acciones" style="justify-content: space-between;">
+            <h2>🏦 Leasing vs. compra al contado</h2>
+            <div class="toggle-moneda">
+              <button class="btn btn-sm btn-primario" id="btnMonedaLeasingUSD">USD (U$D)</button>
+              <button class="btn btn-sm" id="btnMonedaLeasingARS">ARS ($)</button>
+            </div>
+          </div>
+          <div class="kpis" id="kpi-leasing"></div>
+          <div class="dos-col">
+            <div>
+              <h3>Desglose de costos del leasing</h3>
+              <table class="tabla tabla-resumen" id="tabla-leasing-resumen"></table>
+            </div>
+            <div>
+              <h3>Acumulado leasing vs. contado</h3>
+              <div id="chart-leasing" class="chart-cont"></div>
+            </div>
+          </div>
+          <h3>Flujo anual del cliente con leasing</h3>
+          <div class="scroll"><table class="tabla" id="tabla-leasing"></table></div>
+          <p class="hint">Durante el plazo el cliente paga canon + seguro + mantenimiento; al final paga la opción de compra. Si es deducible de Ganancias, se descuenta la alícuota sobre esos pagos.</p>
+        </section>
+
+        <!-- Pestaña 5: Sensibilidad -->
+        <section id="pane-sensibilidad" class="pane">
+          <h2>🎯 Análisis de Sensibilidad y Riesgo</h2>
+          <p class="hint">Evaluación del impacto de variaciones en la tarifa eléctrica, el costo de inversión (CAPEX) y la inflación energética en el VAN y TIR del proyecto.</p>
+          
+          <div class="dos-col">
+            <div class="matriz-cont">
+              <h3>Matriz 1: Variación de Tarifa vs. CAPEX (VAN en U$D)</h3>
+              <p class="hint">Muestra el VAN (U$D) combinando aumentos/reducciones de tarifa con el costo por kWp.</p>
+              <div class="scroll" id="cont-matriz-tarifa-capex"></div>
+            </div>
+            <div class="matriz-cont">
+              <h3>Matriz 2: Inflación de Tarifa vs. Tasa de Descuento (VAN en U$D)</h3>
+              <p class="hint">Muestra el VAN (U$D) según el ritmo de actualización tarifaria y la tasa exigida.</p>
+              <div class="scroll" id="cont-matriz-inf-tasa"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Pestaña 6: Comparador Multi-Proyecto -->
+        <section id="pane-comparador" class="pane">
+          <h2>⚖️ Comparador de Proyectos y Escenarios</h2>
+          <p class="hint">Seleccioná los proyectos que querés comparar lado a lado para evaluar distintas variantes de potencia o clientes.</p>
+          <div id="cont-comparador-selector" class="fila-acciones" style="margin: 14px 0;"></div>
+          <div class="scroll" id="cont-comparador-tabla"></div>
+        </section>
+
+        <!-- Pestaña 7: Propuesta Comercial -->
+        <section id="pane-propuesta" class="pane">
+          <div class="fila-acciones" style="justify-content: space-between; margin-bottom: 16px;">
+            <h2>📄 Propuesta Comercial Ejecutiva</h2>
+            <button class="btn btn-primario" id="btnImprimirPropuesta">🖨 Imprimir / Guardar en PDF</button>
+          </div>
+          <div class="propuesta-card" id="propuesta-imprimible">
+            <!-- Se genera dinámicamente -->
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal Configuración de Membrete / Empresa -->
+  <div id="modalMembrete" class="overlay" hidden>
+    <form class="modal-card" id="formMembrete">
+      <div class="brand">🏢 Configuración de Membrete</div>
+      <p class="hint">Estos datos y el logo encabezarán la propuesta comercial para tus clientes.</p>
+      
+      <label class="campo">
+        <span class="etiqueta">Logo de la empresa (PNG o JPG)</span>
+        <input type="file" id="cfgEmpresaLogo" accept="image/*">
+        <div class="logo-preview-wrap" id="logoPreviewWrap" hidden>
+          <img id="imgLogoPreview" class="logo-preview" alt="Logo">
+          <button class="btn btn-sm btn-peligro" type="button" id="btnQuitarLogo">Quitar logo</button>
+        </div>
+      </label>
+
+      <label class="campo"><span class="etiqueta">Nombre de tu empresa / instaladora</span><input type="text" id="cfgEmpresaNombre" required placeholder="Ej: ALP Soluciones Energéticas"></label>
+      <label class="campo"><span class="etiqueta">Slogan o subtítulo</span><input type="text" id="cfgEmpresaSlogan" placeholder="Ej: Especialistas en Energía Solar y Eficiencia"></label>
+      <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 8px;">
+        <label class="campo"><span class="etiqueta">Asesor / Responsable</span><input type="text" id="cfgEmpresaAsesor" placeholder="Ej: Ing. Juan Pérez"></label>
+        <label class="campo"><span class="etiqueta">Teléfono / WhatsApp</span><input type="text" id="cfgEmpresaTel" placeholder="Ej: +54 9 11 1234-5678"></label>
+      </div>
+      <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 8px;">
+        <label class="campo"><span class="etiqueta">Email de contacto</span><input type="email" id="cfgEmpresaEmail" placeholder="contacto@empresa.com"></label>
+        <label class="campo"><span class="etiqueta">Validez de la oferta (días)</span><input type="number" id="cfgEmpresaValidez" value="15"></label>
+      </div>
+      <div class="fila-acciones" style="justify-content: flex-end; margin-top: 10px;">
+        <button class="btn" type="button" id="btnCerrarMembrete">Cancelar</button>
+        <button class="btn btn-primario" type="submit">Guardar membrete</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Login (solo en modo nube) -->
+  <div id="login" class="overlay" hidden>
+    <form class="modal-card" id="loginForm">
+      <div class="brand">☀️ Simulador FV</div>
+      <p class="hint" id="loginInfo">Ingresá con tu usuario del equipo.</p>
+      <label class="campo"><span class="etiqueta">Email</span><input type="email" id="loginEmail" required autocomplete="username"></label>
+      <label class="campo" id="loginNombreWrap" hidden><span class="etiqueta">Nombre</span><input type="text" id="loginNombre" autocomplete="name"></label>
+      <label class="campo"><span class="etiqueta">Contraseña</span><input type="password" id="loginPass" required minlength="6" autocomplete="current-password"></label>
+      <div class="login-error" id="loginError"></div>
+      <button class="btn btn-primario" type="submit" id="loginBtn">Ingresar</button>
+      <button class="btn btn-link" type="button" id="loginToggle">Crear una cuenta nueva</button>
+      <div style="border-top: 1px dashed var(--borde); margin-top: 8px; padding-top: 10px; text-align: center;">
+        <button class="btn btn-sm" type="button" id="btnModoLocal">⚡ Usar sin cuenta (Modo local en este navegador)</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/calc.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/ejemplo.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
