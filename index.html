@@ -3,13 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Simulador FV · Análisis Técnico-Económico</title>
+  <title>ALP GROUP · Simulador FV · Análisis Técnico-Económico</title>
+  <link rel="icon" type="image/svg+xml" href="img/icon.svg">
+  <link rel="icon" type="image/png" href="img/logo.png">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
   <header class="cabecera">
     <div class="brand">
-      <span class="brand-icon">☀️</span>
+      <img src="img/logo.svg" alt="ALP GROUP" class="brand-logo" onerror="this.onerror=null; this.src='img/logo.png'">
+      <span class="brand-divider">|</span>
       <span>Simulador FV</span>
       <small>análisis técnico-económico solar</small>
     </div>
@@ -272,8 +275,11 @@
   <!-- Login (solo en modo nube) -->
   <div id="login" class="overlay" hidden>
     <form class="modal-card" id="loginForm">
-      <div class="brand">☀️ Simulador FV</div>
-      <p class="hint" id="loginInfo">Ingresá con tu usuario del equipo.</p>
+      <div class="brand" style="justify-content: center; flex-direction: column; gap: 8px;">
+        <img src="img/logo.svg" alt="ALP GROUP" style="height: 38px; width: auto;" onerror="this.onerror=null; this.src='img/logo.png'">
+        <div style="font-size: 14px; font-weight: 600; color: var(--texto-2);">Simulador Fotovoltaico</div>
+      </div>
+      <p class="hint" id="loginInfo" style="text-align: center;">Ingresá con tu usuario del equipo.</p>
       <label class="campo"><span class="etiqueta">Email</span><input type="email" id="loginEmail" required autocomplete="username"></label>
       <label class="campo" id="loginNombreWrap" hidden><span class="etiqueta">Nombre</span><input type="text" id="loginNombre" autocomplete="name"></label>
       <label class="campo"><span class="etiqueta">Contraseña</span><input type="password" id="loginPass" required minlength="6" autocomplete="current-password"></label>

@@ -28,13 +28,13 @@
   const KEY_MEMBRETE = 'alp_g_app_empresa_v1';
   const KEY_TEMA = 'alp_g_app_tema_v1';
   const DEFAULT_MEMBRETE = {
-    nombre: 'ALP Soluciones Energéticas',
+    nombre: 'ALP GROUP',
     slogan: 'Ingeniería y Desarrollo Fotovoltaico · Autoconsumo & Eficiencia',
-    asesor: 'Equipo Comercial',
+    asesor: 'Equipo Comercial & Técnico',
     tel: '+54 9 11 0000-0000',
-    email: 'contacto@alpsoluciones.com',
+    email: 'contacto@alpgroup.com.ar',
     validez: '15',
-    logo: '',
+    logo: 'img/logo.svg',
   };
 
   function getMembrete() {
@@ -1027,7 +1027,8 @@
     const cliCuit = p.presu_cuit || c.cuit || '—';
     const presuNum = p.presu_numero || ('COT-' + String(Date.now()).slice(-6));
 
-    const logoHtml = m.logo ? `<img src="${m.logo}" class="propuesta-logo" alt="Logo">` : '';
+    const logoSrc = m.logo || 'img/logo.svg';
+    const logoHtml = `<img src="${esc(logoSrc)}" class="propuesta-logo" alt="ALP GROUP" onerror="this.onerror=null; this.src='img/logo.png'">`;
 
     const svgBarras = generarSvgBarrasPropuesta(r);
     const svgFlujo = generarSvgFlujoPropuesta(r);
@@ -1036,7 +1037,7 @@
       <div class="propuesta-header">
         <div class="propuesta-empresa">
           ${logoHtml}
-          <h1>☀️ ${esc(m.nombre)}</h1>
+          <h1>${esc(m.nombre)}</h1>
           <p>${esc(m.slogan)}</p>
           <p style="margin-top: 4px; font-size: 11.5px;">Asesor: <b>${esc(m.asesor)}</b> · Tel: ${esc(m.tel)} · Email: ${esc(m.email)}</p>
         </div>
