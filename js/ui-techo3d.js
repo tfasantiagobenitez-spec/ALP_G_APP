@@ -112,6 +112,7 @@
             <div class="mapa-toolbar">
               <button type="button" class="btn btn-sm btn-destacado" id="btnAutoDetectarTecho" title="Detectar automáticamente la huella del edificio en el centro del mapa con OpenStreetMap">🪄 Auto-Detectar</button>
               <button type="button" class="btn btn-sm btn-primario" id="btnHerramientaTecho" title="Trazar contorno del techo haciendo clics en las esquinas">✏️ Trazar Techo</button>
+              <button type="button" class="btn btn-sm" id="btnCerrarTecho" style="display:none; background:#10b981; color:#fff; font-weight:700; border-color:#059669; box-shadow:0 0 8px rgba(16,185,129,0.5);" title="Finalizar trazado del techo">✅ Listo / Cerrar Techo</button>
               <button type="button" class="btn btn-sm" id="btnHerramientaObstaculo" title="Marcar chimeneas, domos o árboles">🚫 Añadir Obstáculo</button>
               <button type="button" class="btn btn-sm" id="btnLimpiarTecho" title="Borrar trazado actual">🗑️ Limpiar</button>
               <span class="toolbar-separador">|</span>
@@ -378,16 +379,83 @@
   }
 
   /**
+   * Cierra el polígono del techo y finaliza el modo dibujo
+   */
+  function cerrarTecho() {
+    state.modoDibujo = 'vista';
+    if (mapa && mapa.doubleClickZoom) {
+      mapa.doubleClickZoom.enable();
+    }
+    const btnT = document.getElementById('btnHerramientaTecho');
+    if (btnT) {
+      btnT.className = 'btn btn-sm btn-primario';
+      btnT.textContent = '✏️ Trazar Techo';
+    }
+    const btnCerrar = document.getElementById('btnCerrarTecho');
+    if (btnCerrar) btnCerrar.style.display = 'none';
+
+    // Si el último punto quedó muy cerca del primero (< 30m o < 60px), remover el punto espurio generado al intentar cliquear el tooltip/marcador
+    if (state.puntosPoligono.length > 3) {
+      const p0 = state.puntosPoligono[0];
+      const pUltimo = state.puntosPoligono[state.puntosPoligono.length - 1];
+      const distM = Math.hypot((pUltimo[0] - p0[0]) * 111132, (pUltimo[1] - p0[1]) * 111132 * Math.cos(p0[0] * Math.PI / 180));
+      if (distM < 30) {
+        state.puntosPoligono.pop();
+      }
+    }
+
+    actualizarTrazadoEnMapa();
+    actualizarDimensionamiento();
+    if (typeof window.toast === 'function') {
+      window.toast('✨ Techo cerrado y dimensionado con éxito');
+    }
+  }
+
+  /**
    * Manejador de clics en el mapa para trazar el polígono o agregar obstáculos
    */
   function onMapaClick(e) {
     if (state.modoDibujo === 'techo') {
-      // Si el nuevo punto está a más de 1.5 km de los puntos previos, reiniciar polígono (evita mezclar localidades)
+      // 1. Si ya tenemos al menos 3 vértices, detectar si el clic fue sobre o cerca del vértice 1 (o en su tooltip)
+      if (state.puntosPoligono.length >= 3) {
+        const p0 = state.puntosPoligono[0];
+        const distM = Math.hypot(
+          (e.latlng.lat - p0[0]) * 111132,
+          (e.latlng.lng - p0[1]) * 111132 * Math.cos(p0[0] * Math.PI / 180)
+        );
+        let distPx = Infinity;
+        if (mapa) {
+          const ptClick = mapa.latLngToContainerPoint(e.latlng);
+          const pt0 = mapa.latLngToContainerPoint(p0);
+          distPx = Math.hypot(ptClick.x - pt0.x, ptClick.y - pt0.y);
+        }
+
+        // Si el clic está a menos de 50px de pantalla o a menos de 20 metros en terreno:
+        // El usuario quiso cerrar el polígono haciendo clic en el punto 1 o en su tooltip
+        if (distPx <= 50 || distM <= 20) {
+          cerrarTecho();
+          return;
+        }
+      }
+
+      // 2. Si el nuevo punto está a más de 1.5 km de los puntos previos, reiniciar polígono
       if (state.puntosPoligono.length > 0) {
         const p0 = state.puntosPoligono[0];
         const distAproxM = Math.hypot((e.latlng.lat - p0[0]) * 111132, (e.latlng.lng - p0[1]) * 111132 * Math.cos(p0[0] * Math.PI / 180));
         if (distAproxM > 1500) {
           state.puntosPoligono = [];
+        }
+      }
+
+      // 3. Ignorar clics repetidos en el mismo punto exacto (< 2m)
+      if (state.puntosPoligono.length > 0) {
+        const pLast = state.puntosPoligono[state.puntosPoligono.length - 1];
+        const distLastM = Math.hypot(
+          (e.latlng.lat - pLast[0]) * 111132,
+          (e.latlng.lng - pLast[1]) * 111132 * Math.cos(pLast[0] * Math.PI / 180)
+        );
+        if (distLastM < 2.0) {
+          return;
         }
       }
 
@@ -417,6 +485,17 @@
     if (!capaPoligono) return;
     capaPoligono.clearLayers();
 
+    // Actualizar botones de la barra superior
+    const btnCerrar = document.getElementById('btnCerrarTecho');
+    const btnT = document.getElementById('btnHerramientaTecho');
+    if (state.modoDibujo === 'techo') {
+      if (btnT) btnT.textContent = state.puntosPoligono.length > 0 ? `✏️ Trazando (${state.puntosPoligono.length} esquinas)` : '✏️ Trazar Techo';
+      if (btnCerrar) btnCerrar.style.display = state.puntosPoligono.length >= 3 ? 'inline-block' : 'none';
+    } else {
+      if (btnT) btnT.textContent = '✏️ Trazar Techo';
+      if (btnCerrar) btnCerrar.style.display = 'none';
+    }
+
     if (state.puntosPoligono.length === 0) return;
 
     // Marcadores de vértices
@@ -424,36 +503,40 @@
       const esPrimero = idx === 0;
       const icon = L.divIcon({
         className: 'vertice-marker',
-        html: `<div style="background:${esPrimero ? '#10b981' : '#2563eb'}; width:16px; height:16px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 6px rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; color:#fff; font-size:9.5px; font-weight:800; cursor:pointer;">${idx + 1}</div>`,
-        iconSize: [16, 16],
-        iconAnchor: [8, 8]
+        html: `<div style="background:${esPrimero ? '#10b981' : '#2563eb'}; width:${esPrimero ? 20 : 16}px; height:${esPrimero ? 20 : 16}px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 8px rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; color:#fff; font-size:${esPrimero ? 10.5 : 9.5}px; font-weight:800; cursor:pointer;">${idx + 1}</div>`,
+        iconSize: [esPrimero ? 20 : 16, esPrimero ? 20 : 16],
+        iconAnchor: [esPrimero ? 10 : 8, esPrimero ? 10 : 8]
       });
       const marker = L.marker(pt, { icon }).addTo(capaPoligono);
 
-      if (esPrimero && state.puntosPoligono.length >= 3) {
-        marker.bindTooltip('✅ Clic acá para cerrar el techo', { permanent: true, direction: 'top', offset: [0, -10] });
+      if (esPrimero && state.puntosPoligono.length >= 3 && state.modoDibujo === 'techo') {
+        marker.bindTooltip(
+          '<div style="cursor:pointer; font-weight:700; font-size:12px; padding:2px 6px;">✅ Clic acá para cerrar el techo</div>',
+          { permanent: true, direction: 'top', offset: [0, -12], interactive: true }
+        );
         marker.on('click', (ev) => {
           if (ev && ev.originalEvent) ev.originalEvent.stopPropagation();
-          state.modoDibujo = 'vista';
-          const btnT = document.getElementById('btnHerramientaTecho');
-          if (btnT) btnT.className = 'btn btn-sm btn-primario';
-          actualizarTrazadoEnMapa();
-          actualizarDimensionamiento();
-          if (typeof window.toast === 'function') {
-            window.toast('✨ Techo cerrado y dimensionado con éxito');
-          }
+          cerrarTecho();
         });
+        const tt = marker.getTooltip();
+        if (tt) {
+          tt.on('click', (ev) => {
+            if (ev && ev.originalEvent) ev.originalEvent.stopPropagation();
+            cerrarTecho();
+          });
+        }
       }
     });
 
     // Línea o polígono cerrado
     if (state.puntosPoligono.length >= 3) {
+      const esModoDibujo = state.modoDibujo === 'techo';
       L.polygon(state.puntosPoligono, {
-        color: '#3b82f6',
-        weight: 3,
-        fillColor: '#60a5fa',
-        fillOpacity: 0.25,
-        dashArray: '4, 4'
+        color: esModoDibujo ? '#3b82f6' : '#10b981',
+        weight: esModoDibujo ? 3 : 2,
+        fillColor: esModoDibujo ? '#60a5fa' : '#10b981',
+        fillOpacity: esModoDibujo ? 0.25 : 0.1,
+        dashArray: esModoDibujo ? '4, 4' : null
       }).addTo(capaPoligono);
     } else if (state.puntosPoligono.length === 2) {
       L.polyline(state.puntosPoligono, {
@@ -1368,12 +1451,33 @@
       btnTecho.addEventListener('click', () => {
         state.modoDibujo = 'techo';
         state.puntosPoligono = [];
+        if (mapa && mapa.doubleClickZoom) {
+          mapa.doubleClickZoom.disable();
+        }
         actualizarTrazadoEnMapa();
         actualizarDimensionamiento();
         btnTecho.className = 'btn btn-sm btn-primario';
         if (btnObs) btnObs.className = 'btn btn-sm';
         if (typeof window.toast === 'function') {
-          window.toast('📍 Hacé clic en las esquinas de la fábrica en el mapa para marcar el techo');
+          window.toast('📍 Hacé clic en las esquinas de la fábrica. Podés cerrarlo con [ ✅ Listo / Cerrar Techo ] o clic en el punto 1');
+        }
+      });
+    }
+
+    const btnCerrar = document.getElementById('btnCerrarTecho');
+    if (btnCerrar) {
+      btnCerrar.addEventListener('click', () => {
+        if (state.puntosPoligono.length >= 3) {
+          cerrarTecho();
+        }
+      });
+    }
+
+    if (mapa) {
+      mapa.on('dblclick', (e) => {
+        if (state.modoDibujo === 'techo' && state.puntosPoligono.length >= 3) {
+          if (e && e.originalEvent) e.originalEvent.stopPropagation();
+          cerrarTecho();
         }
       });
     }
