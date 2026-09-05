@@ -73,6 +73,25 @@ create table if not exists public.distribuidoras (
   activa     boolean not null default true
 );
 
+-- ---------- Membrete de la empresa (una sola fila, compartida por todo el equipo) ----------
+create table if not exists public.empresa (
+  id              boolean primary key default true check (id),   -- el check fuerza una única fila
+  nombre          text not null default '',
+  slogan          text not null default '',
+  asesor          text not null default '',
+  tel             text not null default '',
+  email           text not null default '',
+  validez         text not null default '15',
+  logo            text,                                          -- data URI (base64) o ruta relativa
+  actualizado_en  timestamptz not null default now(),
+  actualizado_por uuid references public.perfiles(id)
+);
+
+-- ---------- Estados del pipeline comercial ----------
+do $$ begin
+  create type estado_comercial as enum ('borrador', 'enviada', 'negociacion', 'ganada', 'perdida');
+exception when duplicate_object then null; end $$;
+
 -- ---------- Proyectos ----------
 create table if not exists public.proyectos (
   id              uuid primary key default gen_random_uuid(),
@@ -91,6 +110,97 @@ create table if not exists public.proyectos (
 create index if not exists proyectos_cliente_idx on public.proyectos (cliente_id);
 create index if not exists proyectos_actualizado_idx on public.proyectos (actualizado_en desc);
 
+-- Columnas del pipeline comercial y borrado lógico.
+-- Se agregan por separado para que el esquema se pueda volver a correr sobre una base ya creada.
+alter table public.proyectos add column if not exists estado_comercial estado_comercial not null default 'borrador';
+alter table public.proyectos add column if not exists probabilidad smallint not null default 0;
+alter table public.proyectos add column if not exists motivo_perdida text;
+alter table public.proyectos add column if not exists fecha_envio timestamptz;
+alter table public.proyectos add column if not exists fecha_cierre timestamptz;
+alter table public.proyectos add column if not exists eliminado_en timestamptz;
+alter table public.proyectos add column if not exists eliminado_por uuid references public.perfiles(id);
+
+create index if not exists proyectos_pipeline_idx on public.proyectos (estado_comercial) where eliminado_en is null;
+create index if not exists proyectos_papelera_idx on public.proyectos (eliminado_en desc) where eliminado_en is not null;
+
+-- ---------- Revisiones congeladas de la propuesta ----------
+-- Cada envío al cliente deja una copia inmutable del estado del proyecto,
+-- para poder responder "¿cuál le mandamos?" seis meses después.
+create table if not exists public.propuestas (
+  id          uuid primary key default gen_random_uuid(),
+  proyecto_id uuid not null references public.proyectos(id) on delete cascade,
+  revision    integer not null,
+  etiqueta    text not null default '',
+  nota        text,
+  estado      jsonb not null,
+  resumen     jsonb,                                  -- KPIs congelados: kWp, CAPEX, VAN, TIR, payback
+  creado_por  uuid references public.perfiles(id) default auth.uid(),
+  creado_en   timestamptz not null default now(),
+  unique (proyecto_id, revision)
+);
+create index if not exists propuestas_proyecto_idx on public.propuestas (proyecto_id, revision desc);
+
+-- ---------- Catálogo de equipos y lista de precios ----------
+create table if not exists public.productos (
+  id             uuid primary key default gen_random_uuid(),
+  categoria      text not null,                       -- modulo, inversor, estructura, cableado, tablero, mano_obra, otro
+  marca          text not null default '',
+  modelo         text not null default '',
+  descripcion    text not null default '',
+  unidad         text not null default 'u.',
+  precio_usd     numeric not null default 0,
+  specs          jsonb not null default '{}'::jsonb,  -- Wp, Voc, Vmp, Isc, potencia AC, etc.
+  activo         boolean not null default true,
+  actualizado_en timestamptz not null default now(),
+  actualizado_por uuid references public.perfiles(id)
+);
+create index if not exists productos_categoria_idx on public.productos (categoria) where activo;
+
+-- ---------- Auditoría de cambios ----------
+create table if not exists public.auditoria (
+  id          bigserial primary key,
+  tabla       text not null,
+  registro_id text not null,
+  accion      text not null,                          -- insert, update, delete, restaurar
+  usuario_id  uuid references public.perfiles(id),
+  detalle     jsonb,
+  creado_en   timestamptz not null default now()
+);
+create index if not exists auditoria_registro_idx on public.auditoria (tabla, registro_id, creado_en desc);
+
+create or replace function public.registrar_auditoria()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  reg_id text;
+  det jsonb;
+begin
+  if (tg_op = 'DELETE') then
+    reg_id := old.id::text;
+    det := jsonb_build_object('nombre', old.nombre);
+  else
+    reg_id := new.id::text;
+    det := jsonb_build_object('nombre', new.nombre, 'kwp', new.kwp, 'estado_comercial', new.estado_comercial);
+    -- Un borrado lógico se registra como tal, no como una edición más
+    if (tg_op = 'UPDATE' and old.eliminado_en is null and new.eliminado_en is not null) then
+      insert into public.auditoria (tabla, registro_id, accion, usuario_id, detalle)
+      values ('proyectos', reg_id, 'papelera', auth.uid(), det);
+      return new;
+    end if;
+    if (tg_op = 'UPDATE' and old.eliminado_en is not null and new.eliminado_en is null) then
+      insert into public.auditoria (tabla, registro_id, accion, usuario_id, detalle)
+      values ('proyectos', reg_id, 'restaurar', auth.uid(), det);
+      return new;
+    end if;
+  end if;
+  insert into public.auditoria (tabla, registro_id, accion, usuario_id, detalle)
+  values ('proyectos', reg_id, lower(tg_op), auth.uid(), det);
+  return coalesce(new, old);
+end $$;
+
+drop trigger if exists proyectos_auditoria on public.proyectos;
+create trigger proyectos_auditoria after insert or update or delete on public.proyectos
+  for each row execute function public.registrar_auditoria();
+
 -- Mantiene actualizado_en / actualizado_por en cada UPDATE
 create or replace function public.marcar_actualizado()
 returns trigger language plpgsql as $$
@@ -108,6 +218,10 @@ drop trigger if exists clientes_actualizado on public.clientes;
 create trigger clientes_actualizado before update on public.clientes
   for each row execute function public.marcar_actualizado();
 
+drop trigger if exists empresa_actualizado on public.empresa;
+create trigger empresa_actualizado before update on public.empresa
+  for each row execute function public.marcar_actualizado();
+
 -- =============================================================================
 --  Seguridad a nivel de fila (RLS)
 --  Modelo por defecto: todo el equipo VE todos los clientes y proyectos;
@@ -118,6 +232,10 @@ alter table public.perfiles       enable row level security;
 alter table public.clientes       enable row level security;
 alter table public.distribuidoras enable row level security;
 alter table public.proyectos      enable row level security;
+alter table public.empresa        enable row level security;
+alter table public.propuestas     enable row level security;
+alter table public.productos      enable row level security;
+alter table public.auditoria      enable row level security;
 
 -- Perfiles
 drop policy if exists perfiles_select on public.perfiles;
@@ -144,6 +262,13 @@ drop policy if exists distribuidoras_admin on public.distribuidoras;
 create policy distribuidoras_admin on public.distribuidoras for all to authenticated
   using (public.es_admin()) with check (public.es_admin());
 
+-- Empresa (membrete): todo el equipo lo lee, solo un admin lo edita
+drop policy if exists empresa_select on public.empresa;
+create policy empresa_select on public.empresa for select to authenticated using (true);
+drop policy if exists empresa_admin on public.empresa;
+create policy empresa_admin on public.empresa for all to authenticated
+  using (public.es_admin()) with check (public.es_admin());
+
 -- Proyectos
 drop policy if exists proyectos_select on public.proyectos;
 create policy proyectos_select on public.proyectos for select to authenticated using (true);
@@ -159,6 +284,26 @@ drop policy if exists proyectos_delete on public.proyectos;
 create policy proyectos_delete on public.proyectos for delete to authenticated
   using (creado_por = auth.uid() or public.es_admin());
 
+-- Revisiones: las ve todo el equipo, las crea quien puede editar y nadie las modifica.
+-- Una revisión congelada que se pueda editar no sirve para nada.
+drop policy if exists propuestas_select on public.propuestas;
+create policy propuestas_select on public.propuestas for select to authenticated using (true);
+drop policy if exists propuestas_insert on public.propuestas;
+create policy propuestas_insert on public.propuestas for insert to authenticated with check (public.puede_editar());
+drop policy if exists propuestas_delete on public.propuestas;
+create policy propuestas_delete on public.propuestas for delete to authenticated using (public.es_admin());
+
+-- Catálogo y lista de precios: lo consulta todo el equipo, lo mantiene un admin
+drop policy if exists productos_select on public.productos;
+create policy productos_select on public.productos for select to authenticated using (true);
+drop policy if exists productos_admin on public.productos;
+create policy productos_admin on public.productos for all to authenticated
+  using (public.es_admin()) with check (public.es_admin());
+
+-- Auditoría: se consulta, no se escribe a mano. El trigger inserta con security definer.
+drop policy if exists auditoria_select on public.auditoria;
+create policy auditoria_select on public.auditoria for select to authenticated using (public.es_admin());
+
 -- =============================================================================
 --  Datos iniciales: distribuidoras con los impuestos que aparecen en los presupuestos
 -- =============================================================================
@@ -170,12 +315,53 @@ insert into public.distribuidoras (nombre, provincia, impuestos) values
   ('Genérica (solo impuestos)', null, '[{"nombre":"Impuestos","pct":10.5},{"nombre":"","pct":0},{"nombre":"","pct":0},{"nombre":"","pct":0},{"nombre":"","pct":0}]')
 on conflict (nombre) do nothing;
 
+-- Fila única del membrete. Los datos de contacto quedan vacíos a propósito:
+-- la app no deja imprimir una propuesta hasta que un admin los complete.
+insert into public.empresa (id, nombre, slogan, asesor, tel, email, validez, logo)
+values (true, 'ALP GROUP', 'Ingeniería y Desarrollo Fotovoltaico · Autoconsumo & Eficiencia', '', '', '', '15', 'img/logo.svg')
+on conflict (id) do nothing;
+
+-- Catálogo inicial con equipos habituales del mercado argentino.
+-- Los precios son de referencia: actualizalos con los de tu proveedor.
+insert into public.productos (categoria, marca, modelo, descripcion, unidad, precio_usd, specs) values
+  ('modulo', 'Genérico', 'Monocristalino 575 Wp', 'Módulo bifacial N-Type 575 Wp', 'u.', 62,
+   '{"wp":575,"voc":51.8,"vmp":43.4,"isc":14.05,"imp":13.25,"coef_voc":-0.25,"noct":45,"coef_pot":-0.35,"largo_m":2.278,"ancho_m":1.134,"peso_kg":28.5}'),
+  ('modulo', 'Genérico', 'Monocristalino 450 Wp', 'Módulo monocristalino PERC 450 Wp', 'u.', 50,
+   '{"wp":450,"voc":49.5,"vmp":41.2,"isc":11.4,"imp":10.9,"coef_voc":-0.27,"noct":45,"coef_pot":-0.35,"largo_m":2.094,"ancho_m":1.038,"peso_kg":23.5}'),
+  ('inversor', 'Genérico', 'String trifásico 50 kW', 'Inversor de red trifásico 50 kW, 4 MPPT', 'u.', 2600,
+   '{"potencia_ac":50,"v_max":1100,"v_min":200,"v_arranque":160,"mppt":4,"i_max_mppt":30,"eficiencia":98.4}'),
+  ('inversor', 'Genérico', 'String trifásico 25 kW', 'Inversor de red trifásico 25 kW, 2 MPPT', 'u.', 1500,
+   '{"potencia_ac":25,"v_max":1100,"v_min":200,"v_arranque":150,"mppt":2,"i_max_mppt":26,"eficiencia":98.3}'),
+  ('inversor', 'Genérico', 'String monofásico 5 kW', 'Inversor de red monofásico 5 kW, 2 MPPT', 'u.', 520,
+   '{"potencia_ac":5,"v_max":600,"v_min":80,"v_arranque":60,"mppt":2,"i_max_mppt":16,"eficiencia":97.6}'),
+  ('bateria', 'Genérico', 'Banco LFP 10 kWh', 'Banco de litio LiFePO4 10 kWh con BMS', 'u.', 3800,
+   '{"kwh":10,"dod":90,"eficiencia":94,"vida_anios":12,"c_rate":0.5}'),
+  ('estructura', 'Genérico', 'Coplanar para chapa', 'Perfilería y grampas para cubierta de chapa', 'kWp', 45, '{}'),
+  ('estructura', 'Genérico', 'Triangular para losa', 'Estructura inclinada con lastre para losa plana', 'kWp', 85, '{}'),
+  ('estructura', 'Genérico', 'Hincada a tierra', 'Estructura hincada para montaje en suelo', 'kWp', 110, '{}'),
+  ('cableado', 'Genérico', 'Conjunto CC y CA', 'Cable solar, conectores, canalización y puesta a tierra', 'kWp', 38, '{}'),
+  ('tablero', 'Genérico', 'Tablero de protecciones', 'Tablero CC y CA con protecciones y seccionamiento', 'kWp', 32, '{}'),
+  ('mano_obra', 'Genérico', 'Montaje e instalación', 'Mano de obra de montaje, conexionado y puesta en marcha', 'kWp', 95, '{}'),
+  ('ingenieria', 'Genérico', 'Proyecto y tramitación', 'Ingeniería, planos, firma profesional y trámite de conexión', 'kWp', 45, '{}')
+on conflict do nothing;
+
 -- =============================================================================
---  Vista útil para listados (proyecto + nombre del cliente + autor)
+--  Vistas útiles para listados y tableros
 -- =============================================================================
 create or replace view public.proyectos_lista as
   select p.id, p.legacy_id, p.cliente_id, c.nombre as cliente, p.nombre, p.kwp, p.resumen, p.enviado,
+         p.estado_comercial, p.probabilidad, p.motivo_perdida, p.fecha_envio, p.fecha_cierre, p.eliminado_en,
          p.creado_por, pf.nombre as autor, p.creado_en, p.actualizado_en
   from public.proyectos p
   left join public.clientes c on c.id = p.cliente_id
   left join public.perfiles pf on pf.id = p.creado_por;
+
+-- Embudo comercial: cuántos proyectos y cuántos kWp hay en cada etapa
+create or replace view public.embudo as
+  select estado_comercial,
+         count(*)            as proyectos,
+         coalesce(sum(kwp), 0) as kwp,
+         coalesce(avg(probabilidad), 0) as probabilidad_media
+  from public.proyectos
+  where eliminado_en is null
+  group by estado_comercial;
