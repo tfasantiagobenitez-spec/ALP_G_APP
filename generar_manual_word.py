@@ -156,17 +156,18 @@ def build_manual():
     toc_items = [
         ("1. Introducción y Propósito de la Plataforma", "3"),
         ("2. Arquitectura del Sistema y Persistencia Dual (Nube vs. Local)", "4"),
-        ("3. Guía Paso a Paso de las 7 Pestañas de Análisis", "5"),
+        ("3. Guía Paso a Paso de las Pestañas de Análisis", "5"),
         ("   3.1. Pestaña 📋 Datos & Asistente de Dimensionamiento", "5"),
-        ("   3.2. Pestaña ⚡ Energía, CO₂ y Desglose de Pérdidas Técnicas", "7"),
-        ("   3.3. Pestaña 📈 Resultados Económicos (Compra Directa)", "8"),
-        ("   3.4. Pestaña 🏦 Leasing vs. Compra al Contado", "9"),
-        ("   3.5. Pestaña 🎯 Análisis de Sensibilidad y Matrices de Riesgo", "10"),
-        ("   3.6. Pestaña ⚖️ Comparador Multi-Proyecto Lado a Lado", "11"),
-        ("   3.7. Pestaña 📄 Propuesta Comercial Ejecutiva (Cotización para Clientes)", "11"),
-        ("4. Base de Datos Solar y Presets de Distribuidoras Argentinas", "12"),
-        ("5. Formulación Matemática y Algoritmos de Ingeniería", "13"),
-        ("6. Preguntas Frecuentes y Buenas Prácticas (FAQ)", "15"),
+        ("   3.2. Pestaña 🛰️ Techo & 3D (Diseño Satelital y Cierre Express en 90s)", "6"),
+        ("   3.3. Pestaña ⚡ Energía, CO₂ y Desglose de Pérdidas Técnicas", "8"),
+        ("   3.4. Pestaña 📈 Resultados Económicos (Compra Directa)", "9"),
+        ("   3.5. Pestaña 🏦 Leasing vs. Compra al Contado", "10"),
+        ("   3.6. Pestaña 🎯 Análisis de Sensibilidad y Matrices de Riesgo", "11"),
+        ("   3.7. Pestaña ⚖️ Comparador Multi-Proyecto Lado a Lado", "12"),
+        ("   3.8. Pestaña 📄 Propuesta Comercial Ejecutiva (Cotización para Clientes)", "12"),
+        ("4. Base de Datos Solar y Presets de Distribuidoras Argentinas", "13"),
+        ("5. Formulación Matemática y Algoritmos de Ingeniería", "14"),
+        ("6. Preguntas Frecuentes y Buenas Prácticas (FAQ)", "16"),
     ]
     
     t_toc = doc.add_table(rows=len(toc_items), cols=2)
@@ -316,8 +317,48 @@ def build_manual():
 
     doc.add_page_break()
 
-    # Pestaña 2
-    doc.add_heading("3.2. Pestaña ⚡ Energía, CO₂ y Desglose de Pérdidas Técnicas", level=2)
+    # Pestaña 2: Techo & 3D
+    doc.add_heading("3.2. Pestaña 🛰️ Techo & 3D (Diseño Satelital y Cierre Express en 90s)", level=2)
+    doc.add_paragraph(
+        "Esta pestaña incorpora tecnología de vanguardia para cotizaciones inmediatas en campo (tablets) y presentaciones comerciales en videollamada. "
+        "Permite realizar en solo 90 segundos lo que tradicionalmente demandaba visitas técnicas previas y software CAD complejo, "
+        "integrando cuatro pilares tecnológicos:"
+    )
+
+    t_pilares = doc.add_table(rows=5, cols=2)
+    t_pilares.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t_pilares.cell(0, 0).text = "Pilar Tecnológico"
+    t_pilares.cell(0, 1).text = "Implementación en ALP GROUP Simulador FV"
+    format_row(t_pilares.rows[0], "009FE3", RGBColor(255, 255, 255), is_bold=True, font_size=9.5)
+
+    pilares_data = [
+        ("1. Visión y Detección de Techos", "Mosaico satelital de alta resolución (Esri World Imagery) y geocodificación de calles/parques industriales (OSM Nominatim). Herramienta de polígono interactivo para delimitar cubiertas, cálculo automático de azimut óptimo y gestor interactivo de obstáculos (Árboles, Chimeneas, Climatizadores HVAC, Domos/Tragaluces y Antenas) con radios y alturas configurables."),
+        ("2. Auto-Layout Inteligente y Tipos de Cubierta", "Algoritmo de empaquetado reticular que calcula la cantidad máxima de módulos (paneles de 575 Wp monocristalinos), potencia pico kWp instalable y factor de ocupación respetando pasillos perimetrales. Soporta cubiertas a Dos Aguas (cumbrera central), Un Agua (monopendiente) y Losa Plana (con muro parapeto perimetral y caballetes de aluminio elevados con espaciado anti-sombras calculado para el solsticio de invierno)."),
+        ("3. Gemelo 3D, Cámaras y Sombras por Trazado de Rayos", "Motor gráfico WebGL interactivo (Three.js) con presets de cámara instantáneos (🛰️ Planta Cenital, 📐 Isométrica 45°, 🌅 Frontal/Rasante y 🔄 Reset). Posicionamiento astronómico del sol (Duffie & Beckman) con slider de hora (06:00 a 19:00 hs) y mes. Incorpora simulación de sombras por Ray-Casting en tiempo real: los módulos bajo sombra se oscurecen dinámicamente en 3D y se calcula el porcentaje de atenuación actual y la pérdida anual estimada (% derate)."),
+        ("4. Conexión Climática & Cierre 90s", "Conexión a la API satelital de NASA POWER para radiación histórica y comparador financiero express: Ahorro mensual en factura eléctrica vs. Cuota del leasing no bancario de ALP Group, con cálculo de flujo neto, envío directo a WhatsApp, descarga de render 3D y volcador integral al proyecto (incluyendo pérdidas por sombras calculadas).")
+    ]
+    for i, (k, v) in enumerate(pilares_data):
+        t_pilares.cell(i+1, 0).text = k
+        t_pilares.cell(i+1, 1).text = v
+        format_row(t_pilares.rows[i+1], "F8FAFC" if i % 2 == 0 else "FFFFFF", RGBColor(51, 65, 85), is_bold=False, font_size=9)
+        t_pilares.rows[i+1].cells[0].paragraphs[0].runs[0].bold = True
+
+    t_pilares.columns[0].width = Inches(2.2)
+    t_pilares.columns[1].width = Inches(4.3)
+
+    create_callout_box(
+        doc,
+        "Al presionar el botón '⚡ Aplicar al Proyecto Completo', el sistema vuelca inmediatamente la potencia pico (kWp), "
+        "cantidad de paneles, azimut, inclinación, superficie de cubierta y el factor de atenuación por sombras 3D calculado a todas las demás pestañas, "
+        "recalculando el flujo de caja en el acto. El botón '💬 WhatsApp' abre un mensaje con el resumen y pitch comercial redactado para enviar al cliente durante la reunión, "
+        "y el botón '📸 Foto 3D' descarga una captura fotorrealista en alta resolución del gemelo digital.",
+        title="CIERRE COMERCIAL EN EL ACTO (90 SEGUNDOS)"
+    )
+
+    doc.add_page_break()
+
+    # Pestaña 3
+    doc.add_heading("3.3. Pestaña ⚡ Energía, CO₂ y Desglose de Pérdidas Técnicas", level=2)
     doc.add_paragraph(
         "Permite auditar el comportamiento físico y energético del generador solar fotovoltaico:"
     )
@@ -337,8 +378,8 @@ def build_manual():
         r_b.font.color.rgb = RGBColor(0, 159, 227)
         p.add_run(normal_text)
 
-    # Pestaña 3
-    doc.add_heading("3.3. Pestaña 📈 Resultados Económicos (Compra Directa)", level=2)
+    # Pestaña 4
+    doc.add_heading("3.4. Pestaña 📈 Resultados Económicos (Compra Directa)", level=2)
     doc.add_paragraph(
         "Modela la viabilidad financiera bajo la modalidad de adquisición directa llave en mano (CAPEX):"
     )
@@ -376,8 +417,8 @@ def build_manual():
 
     doc.add_page_break()
 
-    # Pestaña 4
-    doc.add_heading("3.4. Pestaña 🏦 Leasing vs. Compra al Contado", level=2)
+    # Pestaña 5
+    doc.add_heading("3.5. Pestaña 🏦 Leasing vs. Compra al Contado", level=2)
     doc.add_paragraph(
         "Permite presentar una alternativa de financiamiento donde el cliente no inmoviliza capital inicial elevado:"
     )
@@ -394,8 +435,8 @@ def build_manual():
         r_b.font.color.rgb = RGBColor(0, 159, 227)
         p.add_run(normal_text)
 
-    # Pestaña 5
-    doc.add_heading("3.5. Pestaña 🎯 Análisis de Sensibilidad y Matrices de Riesgo", level=2)
+    # Pestaña 6
+    doc.add_heading("3.6. Pestaña 🎯 Análisis de Sensibilidad y Matrices de Riesgo", level=2)
     doc.add_paragraph(
         "Evalúa la robustez del proyecto ante variaciones del entorno macroeconómico y de precios mediante dos matrices cruzadas de mapa de calor:"
     )
@@ -404,15 +445,15 @@ def build_manual():
         "• Matriz 2 (Inflación Tarifaria vs. Tasa de Descuento): Evalúa el VAN combinando tasas de descuento del 6% al 15% con distintos ritmos de ajuste tarifario anual."
     )
 
-    # Pestaña 6
-    doc.add_heading("3.6. Pestaña ⚖️ Comparador Multi-Proyecto Lado a Lado", level=2)
+    # Pestaña 7
+    doc.add_heading("3.7. Pestaña ⚖️ Comparador Multi-Proyecto Lado a Lado", level=2)
     doc.add_paragraph(
         "Permite seleccionar varios proyectos o variantes de potencia guardadas (ej: 10 kWp vs. 30 kWp vs. 50 kWp) y compararlos en una sola tabla sinóptica "
         "evaluando CAPEX, generación anual, cobertura, VAN, TIR, Payback, LCOE y canon de leasing."
     )
 
-    # Pestaña 7
-    doc.add_heading("3.7. Pestaña 📄 Propuesta Comercial Ejecutiva (PDF Imprimible)", level=2)
+    # Pestaña 8
+    doc.add_heading("3.8. Pestaña 📄 Propuesta Comercial Ejecutiva (PDF Imprimible)", level=2)
     doc.add_paragraph(
         "Genera una cotización formal ejecutiva lista para entregar al cliente. Incluye:"
     )

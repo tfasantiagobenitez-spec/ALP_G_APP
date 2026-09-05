@@ -9,10 +9,12 @@ Sin dependencias ni necesidad de compilación (*build*): se abre [index.html](fi
 ## 📁 Estructura del Proyecto
 
 ```
-index.html          Interfaz de usuario (SPA con 7 pestañas de análisis)
-css/styles.css      Estilos modernos, tipografía Inter, modo Claro/Oscuro y plantilla de impresión
+index.html          Interfaz de usuario (SPA con pestañas de análisis y gemelo 3D)
+css/styles.css      Estilos modernos, tipografía Inter, modo Claro/Oscuro y visor 3D/impresión
 js/calc.js          Motor: balance horario 12×24, tarifa por bandas, inversor, BESS, CO₂, pérdidas, leasing y presupuesto
 js/solar.js         Física solar: declinación, transposición al plano, día despejado y temperatura de celda
+js/techo3d.js       Motor 3D: geometría de cubiertas, empaquetado reticular de módulos, NASA POWER y posición solar
+js/ui-techo3d.js    Visor híbrido 2D Satelital (Leaflet) + 3D WebGL (Three.js), sombras dinámicas y cierre 90s
 js/finanzas.js      Préstamo bancario, PPA y comparador de las cuatro alternativas de financiamiento
 js/riesgo.js        Monte Carlo y diagrama de tornado, con semilla fija para que el resultado sea reproducible
 js/ui-comun.js      Formato es-AR, gráficos SVG sin dependencias y utilidades de interfaz
@@ -39,45 +41,56 @@ supabase/aplicar_esquema.js  Aplica el esquema al proyecto de Supabase y verific
 - **Tarifa Eléctrica**: Presets de distribuidoras (**EPE Santa Fe**, **Edenor/Edesur AMBA**, **EDEN/EDEA/EDES**, **EPEC Córdoba**, Genérica) y esquema de inyección remunerada de excedentes.
 - **Parámetros Económicos y Leasing**: Inflación tarifaria, tasa de descuento ($WACC$), OPEX, recambio de inversores y canon de leasing con deducción de Ganancias.
 
-### 2. ⚡ Energía, CO₂ y Desglose de Pérdidas
+### 2. 🛰️ Techo & 3D (Diseño Satelital y Cierre Express en 90s)
+- **Cartografía Satelital de Alta Resolución**: Mosaico global vía **Esri World Imagery** con buscador de direcciones, ciudades y parques industriales en Argentina (OpenStreetMap Nominatim) y botón de geolocalización GPS en vivo.
+- **Trazador Asistido de Techos & Exclusión de Obstáculos**: Delimitación poligonal de la cubierta con cálculo instantáneo de área ($m^2$), perímetro y orientación/azimut del eje principal. Marcador de chimeneas, domos, extractores y árboles con radio de exclusión.
+- **Auto-Layout de Módulos (Paneles 575 Wp)**: Empaquetado reticular inteligente que maximiza la potencia instalable ($kWp$) respetando pasillos perimetrales de seguridad y espaciado entre filas.
+- **Gemelo 3D en Tiempo Real (Three.js)**: Extrusión volumétrica del edificio según su altura y tipo de cubierta (industrial, comercial, losa). Módulos 3D fotorrealistas y obstáculos circundantes.
+- **Simulador de Sombras Astronómicas**: Control interactivo de hora del día (06:00 a 19:00 hs), mes del año y animación continua *"▶ Animar Día"* proyectando las sombras reales del sol sobre el techo y los paneles.
+- **Conexión Climatológica Satelital**: Consulta a la API de **NASA POWER** para obtener radiación solar histórica (GHI, DNI, DHI) y temperatura con fallback automático offline al motor de `solar.js`.
+- **Cierre Financiero Express (90s)**: Comparador en vivo de **Ahorro mensual en la factura vs. Cuota mensual de Leasing no bancario de ALP Group** (*"El sistema se paga solo desde el mes 1"*).
+- **Acciones Comerciales 1-Clic**: Botón *⚡ Aplicar al Proyecto Completo* (actualiza potencia, paneles, azimut e inclinación en todo el simulador), *💬 WhatsApp* (genera el pitch de ventas con cifras clave listo para enviar) y *📸 Foto 3D* (captura el render para la propuesta).
+
+### 3. ⚡ Energía, CO₂ y Desglose de Pérdidas
 - **Balance horario (12 × 24 h)**: el autoconsumo surge de simular cada mes hora por hora, no de comparar totales mensuales. Ver [Modelo de autoconsumo](#-modelo-de-autoconsumo).
 - Balance mensual interactivo de generación solar, demanda, autoconsumo y excedentes inyectados a red.
 - **⏱ Curva Diaria Horaria (24 horas)**: campana solar calculada con la posición real del sol en el emplazamiento (latitud, longitud, declinación y huso UTC-3), frente a la curva de demanda del cliente y al ciclado de carga/descarga del banco de baterías. Seleccionable por mes o como día medio del año.
 - **🔬 Diagrama de Pérdidas Técnicas y Performance Ratio (PR)**: Desglose físico de pérdidas por temperatura de celda, suciedad/soiling, mismatch de módulos, caídas de tensión DC/AC y rendimiento del inversor.
 - **Indicadores Ambientales (ESG)**: Toneladas de $CO_2$ evitadas al año y en vida útil (factor matriz SADI $0.45\text{ kg }CO_2/kWh$), árboles plantados equivalentes y kilómetros no emitidos.
 
-### 3. 📈 Resultados Económicos (Compra Directa)
+### 4. 📈 Resultados Económicos (Compra Directa)
 - **Selector de Moneda en Tiempo Real**: Visualización instantánea de todos los flujos, tablas y KPIs en **Pesos Argentinos (ARS)** o **Dólares (USD)**.
 - Indicadores financieros clave: **VAN** ($\$$ y $U\$D$), **TIR**, **Payback simple**, **Payback descontado**, **LCOE** ($\$/kWh$ y $\text{¢}U\$D/kWh$) y ahorro acumulado a 20-30 años.
 - **Exportación a Excel (CSV)**: Descarga del flujo de fondos anual completo con desglose de generación, ahorros, OPEX, recambio y flujos acumulados descontados.
 
-### 4. 🏦 Financiamiento
+### 5. 🏦 Financiamiento
 - **Comparador de cuatro alternativas**: compra al contado, leasing, préstamo bancario y PPA, todas en dólares, con el ahorro convertido al tipo de cambio proyectado de cada año y descontadas a la misma tasa. Ver [Comparador de financiamiento](#-comparador-de-financiamiento).
 - **Préstamo bancario**: sistema francés o alemán, en dólares, en pesos a tasa fija o ajustable por UVA, con gastos de otorgamiento y costo financiero total.
 - **PPA**: el cliente no invierte y compra la energía solar a un precio menor que el de la distribuidora, con opción de compra al final del contrato.
 - Detalle del leasing: canon, seguro, mantenimiento, opción de compra y escudo fiscal en Ganancias.
 
-### 5. 🎯 Riesgo
+### 6. 🎯 Riesgo
 - **Simulación de Monte Carlo**: sortea miles de escenarios moviendo a la vez el recurso solar, la tarifa, el costo del sistema, la actualización tarifaria y la devaluación. Devuelve la distribución completa del VAN, la probabilidad de que sea positivo y los percentiles P10, P50 y P90.
 - **Diagrama de tornado**: ordena las variables por cuánto mueven el VAN. La más larga es la que hay que negociar primero.
 - **Matriz Tarifa vs. CAPEX** y **Matriz Inflación vs. Tasa de Descuento**: mapas de calor del VAN ante variaciones cruzadas.
 
-### 6. ⚖️ Comparador Multi-Proyecto
+### 7. ⚖️ Comparador Multi-Proyecto
 - Tabla comparativa de métricas lado a lado seleccionando múltiples proyectos o escenarios de potencia para el mismo cliente.
 
-### 7. 📌 Pipeline Comercial
+### 8. 📌 Pipeline Comercial
 - Etapas: borrador, enviada, en negociación, ganada y perdida, con probabilidad de cierre y motivo de pérdida.
 - Tablero de columnas con todos los proyectos, potencia acumulada por etapa y acceso directo a cada uno.
 - **Revisiones congeladas**: cada envío al cliente deja una copia inmutable del estado con sus indicadores, fecha y autor. Se numeran Rev. A, Rev. B y así.
 - **Papelera**: eliminar manda a la papelera, desde donde se restaura o se borra definitivamente.
 
-### 8. 📊 Tablero Gerencial
+### 9. 📊 Tablero Gerencial
 - Potencia y monto cotizados, ticket medio, tasa de conversión y valor del pipeline ponderado por probabilidad de cierre.
 - Embudo comercial, potencia cotizada y ganada por mes, y agrupaciones por ubicación y por responsable.
 - **Necesitan atención**: ofertas vencidas según la validez del membrete, proyectos frenados más de 45 días, pérdidas sin motivo cargado y proyectos con VAN negativo que siguen abiertos.
 
-### 9. 📄 Propuesta Comercial Ejecutiva (Cotización Imprimible en PDF)
+### 10. 📄 Propuesta Comercial Ejecutiva (Cotización Imprimible en PDF)
 - Propuesta comercial ejecutiva con membrete configurable (logo en PNG/JPG, datos del instalador, asesor, teléfono, email y validez de la oferta).
+- **Estudio Satelital 3D Integrado**: Incorpora la superficie de cubierta, azimut, inclinación, factor de ocupación y la imagen renderizada del gemelo 3D de la nave del cliente.
 - **Gráficos Vectoriales SVG Integrados**: Balance energético mensual y curva de retorno de inversión embebidos directamente en el documento.
 - Insignia de Certificación de Impacto Ambiental Positivo y bloque de firmas formales.
 - Botón **"Imprimir / Guardar en PDF"** con estilos `@media print` optimizados.

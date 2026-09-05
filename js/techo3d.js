@@ -403,15 +403,206 @@
     };
   }
 
+  /**
+   * Calcula la distancia mínima entre filas (pitch / inter-row spacing)
+   * para estructuras inclinadas sobre losa o suelo, evitando sombras en el solsticio de invierno.
+   */
+  function calcularPitchOptimo(latDeg, inclinacionPanelDeg, altoPanelM, orientacion) {
+    if (inclinacionPanelDeg <= 5) return { espacioEntreFilas: 0.15, pitchTotal: 0.15, deltaH: 0, alphaSolsticioDeg: 90 };
+
+    const betaRad = inclinacionPanelDeg * RAD;
+    const lEfectiva = orientacion === 'landscape' ? PANEL_DEFECTO.ancho : (altoPanelM || PANEL_DEFECTO.alto);
+
+    // Altura del extremo superior del panel respecto al suelo/techo
+    const deltaH = lEfectiva * Math.sin(betaRad);
+    const anchoProyectado = lEfectiva * Math.cos(betaRad);
+
+    // Ángulo solar mínimo al mediodía en solsticio de invierno:
+    // En hemisferio sur (lat < 0), solsticio de invierno es el 21 de junio (declinación +23.45°)
+    // alpha = 90° - |lat| - 23.45°
+    const absLat = Math.abs(latDeg !== undefined ? latDeg : -34.6);
+    const alphaDeg = Math.max(15, 90 - absLat - 23.45);
+    const alphaRad = alphaDeg * RAD;
+
+    // Distancia de sombra proyectada hacia atrás
+    const distanciaSombra = deltaH / Math.tan(alphaRad);
+
+    // Espaciado libre recomendado entre la parte trasera de una fila y el inicio de la siguiente
+    const espacioEntreFilas = Math.max(0.25, Math.round(distanciaSombra * 100) / 100);
+    const pitchTotal = Math.round((anchoProyectado + espacioEntreFilas) * 100) / 100;
+
+    return {
+      espacioEntreFilas,
+      pitchTotal,
+      deltaH: Math.round(deltaH * 100) / 100,
+      alphaSolsticioDeg: Math.round(alphaDeg * 10) / 10
+    };
+  }
+
+  /**
+   * Consulta a OpenStreetMap Overpass API para buscar la huella poligonal del edificio más cercano.
+   */
+  async function fetchHuellaEdificioOSM(lat, lng) {
+    const latFix = (+lat).toFixed(6);
+    const lngFix = (+lng).toFixed(6);
+    const query = `[out:json][timeout:8];(way["building"](around:40,${latFix},${lngFix}););out geom;`;
+    const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const json = await resp.json();
+      if (json && json.elements && json.elements.length > 0) {
+        const el = json.elements[0];
+        if (el.geometry && el.geometry.length >= 3) {
+          const puntos = el.geometry.map(pt => [pt.lat, pt.lon]);
+          return {
+            ok: true,
+            tipo: el.tags && el.tags.building ? el.tags.building : 'industrial',
+            puntos
+          };
+        }
+      }
+      return { ok: false, mensaje: 'No se encontró huella vectorial en OpenStreetMap en este punto.' };
+    } catch (e) {
+      return { ok: false, mensaje: e.message };
+    }
+  }
+
+  /**
+   * Catálogo de tipos de obstáculos estándar para cubiertas industriales y comerciales
+   */
+  const TIPOS_OBSTACULO = {
+    arbol: { id: 'arbol', nombre: '🌳 Árbol', radioDefecto: 3.0, alturaDefecto: 8.0, colorHex: 0x15803d },
+    chimenea: { id: 'chimenea', nombre: '🏭 Chimenea / Tiro', radioDefecto: 0.8, alturaDefecto: 4.5, colorHex: 0x64748b },
+    hvac: { id: 'hvac', nombre: '❄️ Unidad HVAC / Clima', radioDefecto: 1.8, alturaDefecto: 2.2, colorHex: 0x94a3b8 },
+    domo: { id: 'domo', nombre: '🪟 Domo / Tragaluz', radioDefecto: 1.2, alturaDefecto: 0.8, colorHex: 0x38bdf8 },
+    antena: { id: 'antena', nombre: '🗼 Antena / Pararrayos', radioDefecto: 0.6, alturaDefecto: 9.0, colorHex: 0xd97706 }
+  };
+
+  /**
+   * Cálculo de sombreado por trazado de rayos (Ray-casting) entre paneles y obstáculos.
+   * Determina qué paneles están bajo sombra para una posición solar dada (elevación, azimut).
+   */
+  function calcularSombreadoPaneles(paneles, obstaculosMetros, elevacionDeg, azimutDeg, alturaBaseM) {
+    if (!paneles || paneles.length === 0) return { sombreados: [], pctSombra: 0 };
+    if (!obstaculosMetros || obstaculosMetros.length === 0 || elevacionDeg <= 0) {
+      return { sombreados: new Array(paneles.length).fill(false), pctSombra: 0 };
+    }
+
+    const elevRad = elevacionDeg * RAD;
+    const azRad = azimutDeg * RAD;
+
+    // Vector unitario que apunta HACIA el sol
+    // X = Este (+), Y = Norte (+), Z = Arriba (+)
+    const sx = Math.cos(elevRad) * Math.sin(azRad);
+    const sy = Math.cos(elevRad) * Math.cos(azRad);
+    const sz = Math.sin(elevRad);
+
+    const sombreados = new Array(paneles.length).fill(false);
+    let cantSombreados = 0;
+
+    const zBase = alturaBaseM || 8.0;
+
+    for (let i = 0; i < paneles.length; i++) {
+      const p = paneles[i];
+      const px = p.x;
+      const py = p.y;
+      const pz = zBase + 0.2; // Altura del centro del panel
+
+      for (let obs of obstaculosMetros) {
+        const ox = obs.x;
+        const oy = obs.y;
+        const rObs = obs.radio || 2.0;
+        const hObs = zBase + (obs.alturaRelativa || (obs.alturaTotal ? obs.alturaTotal - zBase : 3.5));
+
+        // Intersección de rayo P + t*S con el cilindro vertical centrado en (ox, oy) de radio rObs
+        // (px + t*sx - ox)^2 + (py + t*sy - oy)^2 = rObs^2
+        const dx = px - ox;
+        const dy = py - oy;
+
+        const a = sx * sx + sy * sy;
+        if (a < 1e-6) continue; // Rayo vertical
+
+        const b = 2 * (dx * sx + dy * sy);
+        const c = dx * dx + dy * dy - rObs * rObs;
+
+        const disc = b * b - 4 * a * c;
+        if (disc >= 0) {
+          const sqrtDisc = Math.sqrt(disc);
+          const t1 = (-b - sqrtDisc) / (2 * a);
+          const t2 = (-b + sqrtDisc) / (2 * a);
+
+          // Buscamos intersección en dirección al sol (t > 0)
+          const t = t1 > 0 ? t1 : (t2 > 0 ? t2 : -1);
+          if (t > 0) {
+            // Verificar si el rayo pasa por debajo de la coronación del obstáculo
+            const zRayo = pz + t * sz;
+            if (zRayo <= hObs && zRayo >= zBase) {
+              sombreados[i] = true;
+              cantSombreados++;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    const pctSombra = Math.round((cantSombreados / paneles.length) * 100);
+    return {
+      sombreados,
+      cantSombreados,
+      pctSombra
+    };
+  }
+
+  /**
+   * Estima la pérdida anual ponderada por sombras (% derate anual)
+   * simulando muestras en solsticios y equinoccios en horas productivas (9h, 12h, 15h).
+   */
+  function estimarPerdidaSombrasAnual(paneles, obstaculosMetros, latDeg, lonDeg, alturaBaseM) {
+    if (!paneles || paneles.length === 0 || !obstaculosMetros || obstaculosMetros.length === 0) {
+      return 0;
+    }
+
+    const horasMuestra = [9.5, 12.0, 14.5];
+    const mesesMuestra = [0, 5, 8]; // Enero (verano), Junio (invierno), Septiembre (equinoccio)
+
+    let sumaPct = 0;
+    let muestras = 0;
+
+    for (let m of mesesMuestra) {
+      for (let h of horasMuestra) {
+        const sol = calcularPosicionSolar(latDeg, lonDeg, m, h);
+        if (sol.esDeDia && sol.elevacionDeg > 10) {
+          const res = calcularSombreadoPaneles(paneles, obstaculosMetros, sol.elevacionDeg, sol.azimutDeg, alturaBaseM);
+          sumaPct += res.pctSombra;
+          muestras++;
+        }
+      }
+    }
+
+    if (muestras === 0) return 0;
+    // Ponderación anual estimada (la pérdida eléctrica suele ser menor que el sombreado visual total gracias a diodos bypass)
+    const factorElectrico = 0.65;
+    const perdidaAnualPct = Math.min(25, Math.round((sumaPct / muestras) * factorElectrico * 10) / 10);
+    return perdidaAnualPct;
+  }
+
   return {
     PANEL_DEFECTO,
+    TIPOS_OBSTACULO,
     proyectarMetros,
     calcAreaPerimetro,
     calcAzimutPrincipal,
     puntoEnPoligono,
     distribuirPaneles,
     calcularPosicionSolar,
+    calcularSombreadoPaneles,
+    estimarPerdidaSombrasAnual,
     fetchNasaPower,
-    calcularLeasingExpress
+    calcularLeasingExpress,
+    calcularPitchOptimo,
+    fetchHuellaEdificioOSM
   };
 });

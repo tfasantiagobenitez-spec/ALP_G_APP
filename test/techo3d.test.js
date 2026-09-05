@@ -69,6 +69,36 @@ function suite() {
     assert(r.cuotaLeasingMensualUsd > 0, 'Cuota leasing debe ser positiva');
     assert(r.ahorroNetoVeinticincoAnios > r.ahorroNetoCincoAnios, 'Ahorro a 25 años supera al de 5');
   });
+
+  t('calcularPitchOptimo: calcula separación anti-sombras para solsticio de invierno', () => {
+    const coplanar = Techo3D.calcularPitchOptimo(-34.6, 5);
+    assert.strictEqual(coplanar.espacioEntreFilas, 0.15);
+
+    const triangulos = Techo3D.calcularPitchOptimo(-34.6, 25);
+    assert(triangulos.espacioEntreFilas > 1.0, 'Para 25° de inclinación la separación entre filas debe ser > 1 metro');
+    assert(triangulos.deltaH > 0.8, 'La altura del extremo debe ser mayor a 0.8 metros');
+  });
+
+  t('calcularSombreadoPaneles: detecta paneles bajo sombra proyectada de obstáculo', () => {
+    const paneles = [
+      { x: 0, y: 0, ancho: 1.13, alto: 2.28 },
+      { x: 20, y: 20, ancho: 1.13, alto: 2.28 }
+    ];
+    // Obstáculo al Norte del panel 0 (y = 5), sol en el Norte (azimut 0°, elevación 30°)
+    const obstaculos = [{ x: 0, y: 5, radio: 2.0, alturaRelativa: 5.0 }];
+    const res = Techo3D.calcularSombreadoPaneles(paneles, obstaculos, 30, 0, 8.0);
+
+    assert.strictEqual(res.sombreados[0], true, 'Panel 0 debe estar sombreado por el obstáculo');
+    assert.strictEqual(res.sombreados[1], false, 'Panel alejado no debe estar sombreado');
+    assert.strictEqual(res.cantSombreados, 1);
+  });
+
+  t('estimarPerdidaSombrasAnual: calcula derate ponderado razonable', () => {
+    const paneles = [{ x: 0, y: 0 }, { x: 5, y: 0 }];
+    const obstaculos = [{ x: 0, y: 3, radio: 1.5, alturaRelativa: 4.0 }];
+    const perdida = Techo3D.estimarPerdidaSombrasAnual(paneles, obstaculos, -34.6, -58.4, 8.0);
+    assert(perdida >= 0 && perdida <= 25, 'Pérdida anual debe estar entre 0 y 25%');
+  });
 }
 
 if (require.main === module) correrSuelta(suite);

@@ -349,6 +349,9 @@
     UI.actualizado_en = p.actualizado_en || null; UI.legacy_id = p.legacy_id || null; UI.creado_por = p.creado_por || null;
     UI.estado = Object.assign({}, DEFAULT_ESTADO, p.estado);
     UI.dirty = false;
+    if (typeof UITecho3D !== 'undefined' && p.estado && p.estado.techo3d) {
+      UITecho3D.cargarEstado(p.estado.techo3d);
+    }
   }
 
   async function abrir(id) {
@@ -387,6 +390,12 @@
   async function guardar(force) {
     if (!UI.estado) return;
     if (!DB.puedeEditar()) { toast('Tu usuario es solo de lectura'); return; }
+    if (typeof UITecho3D !== 'undefined' && typeof UITecho3D.guardarEstado === 'function') {
+      const datosTecho = UITecho3D.guardarEstado();
+      if (datosTecho && datosTecho.puntosPoligono && datosTecho.puntosPoligono.length >= 3) {
+        UI.estado.techo3d = datosTecho;
+      }
+    }
     const nombre = $('#nombre').value.trim() || UI.estado.cliente_nombre || 'Sin nombre';
     const btn = $('#btnGuardar'); btn.disabled = true;
     try {
@@ -1453,6 +1462,39 @@
           ${svgFlujo}
         </div>
       </div>
+
+      ${(() => {
+        const t3d = (UI.estado && UI.estado.techo3d)
+          ? UI.estado.techo3d
+          : (typeof UITecho3D !== 'undefined' ? UITecho3D.obtenerResumen() : null);
+        const tieneT3d = t3d && (t3d.cantidadPaneles > 0 || (t3d.puntosPoligono && t3d.puntosPoligono.length >= 3));
+        if (!tieneT3d) return '';
+        const snapshot = t3d.snapshotDataUrl || (t3d.distribucion && t3d.distribucion.snapshotDataUrl);
+        const areaTecho = t3d.areaTechoM2 || (t3d.distribucion && t3d.distribucion.areaTotalTecho) || 0;
+        const paneles = t3d.cantidadPaneles || (t3d.distribucion && t3d.distribucion.count) || p.presu_paneles;
+        const ocup = t3d.factorOcupacionPct || (t3d.distribucion && t3d.distribucion.factorOcupacionPct) || 0;
+        return `
+          <div class="propuesta-bloque" style="margin-bottom: 20px;">
+            <h4>🛰️ Estudio Satelital 3D y Disposición de Cubierta</h4>
+            <div style="display: grid; grid-template-columns: ${snapshot ? '1.1fr 1fr' : '1fr'}; gap: 16px; align-items: center;">
+              ${snapshot ? `
+                <div style="border-radius: var(--radio-sm); overflow: hidden; border: 1px solid var(--borde); background: #0f172a; text-align: center;">
+                  <img src="${snapshot}" alt="Gemelo 3D Satelital" style="width: 100%; height: auto; max-height: 200px; object-fit: cover; display: block;">
+                  <small style="display: block; padding: 4px; color: #94a3b8; font-size: 10px;">Gemelo 3D y simulación de sombras en el emplazamiento</small>
+                </div>
+              ` : ''}
+              <div>
+                <div class="propuesta-fila"><span class="etq">Superficie útil de cubierta:</span><span class="val">${fmtN(areaTecho)} m²</span></div>
+                <div class="propuesta-fila"><span class="etq">Módulos en el plano:</span><span class="val">${fmtN(paneles)} paneles fotovoltaicos</span></div>
+                <div class="propuesta-fila"><span class="etq">Orientación (Azimut):</span><span class="val">${t3d.azimutDeg !== undefined ? t3d.azimutDeg + '° (Norte = 0°)' : 'Óptima'}</span></div>
+                <div class="propuesta-fila"><span class="etq">Inclinación proyectada:</span><span class="val">${t3d.inclinacionDeg !== undefined ? t3d.inclinacionDeg + '°' : '15°'}</span></div>
+                <div class="propuesta-fila"><span class="etq">Tipo de nave / estructura:</span><span class="val">${esc((t3d.tipoNave || 'industrial').toUpperCase())} (${t3d.alturaNaveM || 8} m)</span></div>
+                <div class="propuesta-fila"><span class="etq">Factor de ocupación útil:</span><span class="val">${ocup}% del techo aprovechado</span></div>
+              </div>
+            </div>
+          </div>
+        `;
+      })()}
 
       <div class="propuesta-bloque" style="margin-bottom: 20px;">
         <h4>💰 Resumen Económico y Financiero</h4>

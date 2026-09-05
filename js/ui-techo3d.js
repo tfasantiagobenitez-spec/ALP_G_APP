@@ -12,6 +12,7 @@
   let mapa = null;
   let capaSatelital = null;
   let capaEtiquetas = null;
+  let capaOSM = null;
   let capaPoligono = null;
   let capaPaneles = null;
   let capaObstaculos = null;
@@ -22,9 +23,10 @@
     lng: -58.9550,
     zoom: 18,
     puntosPoligono: [], // [[lat, lng], ...]
-    obstaculos: [],     // [{ lat, lng, radio, tipo }]
+    obstaculos: [],     // [{ id, lat, lng, radio, alturaRelativa, tipo }]
     modoDibujo: 'techo', // 'techo' | 'obstaculo' | 'vista'
     tipoNave: 'industrial', // 'industrial' (8m) | 'comercio' (6m) | 'losa' (10m) | 'suelo' (0m)
+    tipoEstructura: 'coplanar', // 'coplanar' (chapa) | 'triangulos' (losa/suelo)
     alturaNaveM: 8.0,
     tipoCubierta: 'dos_aguas', // 'dos_aguas' | 'un_agua' | 'plano'
     potenciaPanelWp: 575,
@@ -33,6 +35,8 @@
     azimutManual: null,
     distribucion: null, // Resultado de Techo3D.distribuirPaneles
     nasaData: null,
+    perdidaSombrasAnualPct: 0,
+    threePanelMeshes: [], // [{ mesh, defaultMat, shadowMat, panelData }]
     // Estado 3D (Three.js)
     threeScene: null,
     threeCamera: null,
@@ -106,17 +110,28 @@
             <div class="visor-badge">🗺️ Satélite Alta Resolución (Esri World Imagery)</div>
             <div id="mapaTecho" class="mapa-leaflet-cont"></div>
             <div class="mapa-toolbar">
+              <button type="button" class="btn btn-sm btn-destacado" id="btnAutoDetectarTecho" title="Detectar automáticamente la huella del edificio en el centro del mapa con OpenStreetMap">🪄 Auto-Detectar</button>
               <button type="button" class="btn btn-sm btn-primario" id="btnHerramientaTecho" title="Trazar contorno del techo haciendo clics en las esquinas">✏️ Trazar Techo</button>
               <button type="button" class="btn btn-sm" id="btnHerramientaObstaculo" title="Marcar chimeneas, domos o árboles">🚫 Añadir Obstáculo</button>
               <button type="button" class="btn btn-sm" id="btnLimpiarTecho" title="Borrar trazado actual">🗑️ Limpiar</button>
               <span class="toolbar-separador">|</span>
-              <label class="toolbar-chk"><input type="checkbox" id="chkEtiquetasCalles" checked> Calles y nombres</label>
+              <select id="selCapaMapa" class="select-sm" style="font-size:11.5px; padding:3px 6px; border-radius:4px; background:var(--bg); color:var(--texto); border:1px solid var(--borde);">
+                <option value="hibrido" selected>🛰️ Satélite + Calles</option>
+                <option value="satelital">🛰️ Satélite Puro</option>
+                <option value="calles">🏙️ Calles (OSM)</option>
+              </select>
             </div>
           </div>
 
           <!-- Visor 3D WebGL con Three.js -->
           <div class="techo3d-visor-box" id="boxVisor3D">
             <div class="visor-badge">🧊 Gemelo 3D + Sombras Solares en Tiempo Real</div>
+            <div class="visor-3d-cam-tools">
+              <button type="button" class="btn-cam" id="btnCamTop" title="Vista Cenital (Planta)">🛰️ Planta</button>
+              <button type="button" class="btn-cam" id="btnCamIso" title="Vista Isométrica 45°">📐 Isométrica</button>
+              <button type="button" class="btn-cam" id="btnCamFront" title="Vista Frontal / Rasante">🌅 Frontal</button>
+              <button type="button" class="btn-cam" id="btnCamReset" title="Restablecer Vista">🔄 Reset</button>
+            </div>
             <div id="canvas3dCont" class="canvas-3d-cont"></div>
             
             <!-- Barra de control solar astronómico -->
@@ -167,6 +182,24 @@
                 </select>
               </label>
               <label class="campo">
+                <span class="etiqueta">Tipo de Cubierta</span>
+                <select id="selTipoCubierta">
+                  <option value="dos_aguas" selected>⛰️ Dos Aguas (Cumbrera)</option>
+                  <option value="un_agua">📐 Un Agua (Inclinado)</option>
+                  <option value="plano">🏢 Losa Plana / Parapeto</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="grid-2col">
+              <label class="campo">
+                <span class="etiqueta">Estructura</span>
+                <select id="selTipoEstructura">
+                  <option value="coplanar" selected>Coplanar (Chapa / Teja)</option>
+                  <option value="triangulos">Triángulos Inclinados (Losa / Suelo)</option>
+                </select>
+              </label>
+              <label class="campo">
                 <span class="etiqueta">Altura Alero</span>
                 <div class="con-unidad"><input type="number" id="inpAlturaNave" value="8" min="2" max="30" step="0.5"><span class="unidad">m</span></div>
               </label>
@@ -182,7 +215,7 @@
                 </select>
               </label>
               <label class="campo">
-                <span class="etiqueta">Orientación Módulos</span>
+                <span class="etiqueta">Disposición</span>
                 <select id="selOrientacionPanel">
                   <option value="portrait" selected>Vertical (Portrait)</option>
                   <option value="landscape">Horizontal (Landscape)</option>
@@ -229,6 +262,20 @@
             </div>
             <div class="metrica-clima-info" id="boxClimaInfo">
               <span>☀️ <strong>Radiación Satelital:</strong> Calculando NASA POWER / Local…</span>
+            </div>
+            <div class="metrica-sombra-info" id="boxSombrasInfo">
+              <span>🌥️ <strong>Sombras:</strong> 0% en esta hora · Pérdida Anual Est.: 0%</span>
+            </div>
+          </div>
+
+          <!-- Gestión Interactiva de Obstáculos -->
+          <div class="sidebar-bloque" id="bloqueObstaculos">
+            <div class="sidebar-titulo-con-accion">
+              <h3 class="sidebar-titulo" style="margin-bottom:0;">🚫 Obstáculos & Sombras (<span id="countObstaculos">0</span>)</h3>
+              <button type="button" class="btn btn-xs" id="btnAddObsManual" title="Agregar obstáculo en el centro del techo">+ Agregar</button>
+            </div>
+            <div id="listaObstaculosCont" class="lista-obstaculos-cont">
+              <div class="obstaculos-vacio">No hay obstáculos trazados. Hacé clic en [ 🚫 Añadir Obstáculo ] en el mapa o en [+ Agregar].</div>
             </div>
           </div>
 
@@ -313,6 +360,11 @@
       maxZoom: 21
     }).addTo(mapa);
 
+    // Capa OpenStreetMap estándar
+    capaOSM = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    });
+
     // Grupos de capas
     capaPoligono = L.layerGroup().addTo(mapa);
     capaPaneles = L.layerGroup().addTo(mapa);
@@ -335,9 +387,11 @@
       actualizarDimensionamiento();
     } else if (state.modoDibujo === 'obstaculo') {
       state.obstaculos.push({
+        id: 'obs_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
         lat: e.latlng.lat,
         lng: e.latlng.lng,
-        radio: 2.0,
+        radio: 2.5,
+        alturaRelativa: 3.5,
         tipo: 'arbol'
       });
       actualizarObstaculosEnMapa();
@@ -383,20 +437,112 @@
   }
 
   /**
-   * Dibuja los obstáculos en el mapa
+   * Dibuja los obstáculos en el mapa y actualiza la lista lateral
    */
   function actualizarObstaculosEnMapa() {
     if (!capaObstaculos) return;
     capaObstaculos.clearLayers();
 
-    state.obstaculos.forEach(obs => {
-      L.circle([obs.lat, obs.lng], {
-        radius: obs.radio,
-        color: '#ef4444',
-        fillColor: '#f87171',
+    state.obstaculos.forEach((obs, idx) => {
+      const tipoDef = (Techo3D.TIPOS_OBSTACULO && Techo3D.TIPOS_OBSTACULO[obs.tipo]) || { nombre: '🚫 Obstáculo', colorHex: 0xef4444 };
+      const colorHex = '#' + tipoDef.colorHex.toString(16).padStart(6, '0');
+      const circ = L.circle([obs.lat, obs.lng], {
+        radius: obs.radio || 2.5,
+        color: colorHex,
+        fillColor: colorHex,
         fillOpacity: 0.45,
         weight: 2
       }).addTo(capaObstaculos);
+
+      circ.bindTooltip(`${tipoDef.nombre} (r=${obs.radio || 2.5}m, h=${obs.alturaRelativa || 3.5}m)`, {
+        direction: 'top',
+        offset: [0, -5]
+      });
+    });
+
+    renderizarListaObstaculos();
+  }
+
+  /**
+   * Renderiza la lista interactiva de obstáculos en el panel lateral
+   */
+  function renderizarListaObstaculos() {
+    const cont = document.getElementById('listaObstaculosCont');
+    const countEl = document.getElementById('countObstaculos');
+    if (countEl) countEl.textContent = state.obstaculos.length;
+    if (!cont) return;
+
+    if (state.obstaculos.length === 0) {
+      cont.innerHTML = `<div class="obstaculos-vacio">No hay obstáculos trazados. Hacé clic en [ 🚫 Añadir Obstáculo ] en el mapa o en [+ Agregar].</div>`;
+      return;
+    }
+
+    let html = '';
+    state.obstaculos.forEach((obs, idx) => {
+      const tipoDef = (Techo3D.TIPOS_OBSTACULO && Techo3D.TIPOS_OBSTACULO[obs.tipo]) || { nombre: '🚫 Obstáculo' };
+      const icono = tipoDef.nombre.split(' ')[0] || '🚫';
+      html += `
+        <div class="obstaculo-item">
+          <span class="obstaculo-icono">${icono}</span>
+          <select class="select-obs-tipo select-sm" data-idx="${idx}" style="font-size:11px; padding:2px 4px; border-radius:3px; background:var(--panel); color:var(--texto); border:1px solid var(--borde);">
+            <option value="arbol" ${obs.tipo === 'arbol' ? 'selected' : ''}>🌳 Árbol</option>
+            <option value="chimenea" ${obs.tipo === 'chimenea' ? 'selected' : ''}>🏭 Chimenea</option>
+            <option value="hvac" ${obs.tipo === 'hvac' ? 'selected' : ''}>❄️ HVAC</option>
+            <option value="domo" ${obs.tipo === 'domo' ? 'selected' : ''}>🪟 Domo</option>
+            <option value="antena" ${obs.tipo === 'antena' ? 'selected' : ''}>🗼 Antena</option>
+          </select>
+          <div class="obstaculo-dims">
+            <span>R:</span>
+            <input type="number" class="inp-obs-r" data-idx="${idx}" value="${obs.radio || 2.5}" min="0.3" max="20" step="0.5" title="Radio de seguridad (m)">
+            <span>H:</span>
+            <input type="number" class="inp-obs-h" data-idx="${idx}" value="${obs.alturaRelativa || 3.5}" min="0.5" max="30" step="0.5" title="Altura del obstáculo (m)">
+          </div>
+          <button type="button" class="btn-del-obs" data-idx="${idx}" title="Eliminar este obstáculo">🗑️</button>
+        </div>
+      `;
+    });
+    cont.innerHTML = html;
+
+    // Vincular eventos de la lista
+    cont.querySelectorAll('.select-obs-tipo').forEach(sel => {
+      sel.addEventListener('change', e => {
+        const i = parseInt(e.target.dataset.idx, 10);
+        if (state.obstaculos[i]) {
+          state.obstaculos[i].tipo = e.target.value;
+          actualizarObstaculosEnMapa();
+          actualizarDimensionamiento();
+        }
+      });
+    });
+
+    cont.querySelectorAll('.inp-obs-r').forEach(inp => {
+      inp.addEventListener('change', e => {
+        const i = parseInt(e.target.dataset.idx, 10);
+        if (state.obstaculos[i]) {
+          state.obstaculos[i].radio = Math.max(0.3, parseFloat(e.target.value) || 2.5);
+          actualizarObstaculosEnMapa();
+          actualizarDimensionamiento();
+        }
+      });
+    });
+
+    cont.querySelectorAll('.inp-obs-h').forEach(inp => {
+      inp.addEventListener('change', e => {
+        const i = parseInt(e.target.dataset.idx, 10);
+        if (state.obstaculos[i]) {
+          state.obstaculos[i].alturaRelativa = Math.max(0.5, parseFloat(e.target.value) || 3.5);
+          actualizarDimensionamiento();
+        }
+      });
+    });
+
+    cont.querySelectorAll('.btn-del-obs').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const i = parseInt(e.currentTarget.dataset.idx, 10);
+        state.obstaculos.splice(i, 1);
+        actualizarObstaculosEnMapa();
+        actualizarDimensionamiento();
+      });
     });
   }
 
@@ -456,20 +602,39 @@
     const obstaculosMetros = state.obstaculos.map(o => ({
       x: (o.lng - centro.lng) * mPorLng,
       y: (o.lat - centro.lat) * mPorLat,
-      radio: o.radio
+      radio: o.radio || 2.5,
+      alturaRelativa: o.alturaRelativa || 3.5,
+      tipo: o.tipo || 'arbol'
     }));
 
-    // 3. Opciones de empaquetado
+    // 3. Opciones de empaquetado y cálculo de pitch anti-sombras
+    const esTriangulos = state.tipoEstructura === 'triangulos' || state.tipoNave === 'losa' || state.tipoNave === 'suelo';
+    let espacioFilas = 0.15;
+    if (esTriangulos && state.inclinacionDeg > 5) {
+      const pitch = Techo3D.calcularPitchOptimo(centro.lat, state.inclinacionDeg, null, state.orientacionPanel);
+      espacioFilas = pitch.espacioEntreFilas;
+    }
+
     const opciones = {
       potenciaWp: state.potenciaPanelWp,
       orientacion: state.orientacionPanel,
       inclinacionTecho: state.inclinacionDeg,
+      espacioEntreFilas: espacioFilas,
       azimutManual: state.azimutManual
     };
 
     // 4. Distribuir módulos
     const res = Techo3D.distribuirPaneles(puntosMetros, obstaculosMetros, opciones);
     state.distribucion = res;
+
+    // 4.b. Estimar pérdida anual por sombras con los obstáculos presentes
+    state.perdidaSombrasAnualPct = Techo3D.estimarPerdidaSombrasAnual(
+      res.paneles,
+      obstaculosMetros,
+      centro.lat,
+      centro.lng,
+      state.alturaNaveM || 8.0
+    );
 
     // Actualizar azimut en UI si fue automático
     const inpAz = document.getElementById('inpAzimutTecho');
@@ -494,8 +659,9 @@
     // 7. Cierre financiero express en 90 segundos
     actualizarCierreExpress(res.potenciaKwp);
 
-    // 8. Actualizar gemelo 3D
+    // 8. Actualizar gemelo 3D y sombras solares
     actualizarEscena3D(puntosMetros, res);
+    actualizarPosicionSolar3D();
 
     // 9. Consultar radiación NASA POWER para la ubicación
     consultarNasaPower(centro.lat, centro.lng);
@@ -728,6 +894,49 @@
     } else {
       state.threeSunLight.visible = false;
     }
+
+    // Cálculo y renderizado de sombreado en tiempo real sobre los paneles 3D
+    if (state.distribucion && state.distribucion.paneles && state.puntosPoligono.length >= 3) {
+      const { centro, mPorLat, mPorLng } = Techo3D.proyectarMetros(state.puntosPoligono);
+      const obstaculosMetros = state.obstaculos.map(o => ({
+        x: (o.lng - centro.lng) * mPorLng,
+        y: (o.lat - centro.lat) * mPorLat,
+        radio: o.radio || 2.5,
+        alturaRelativa: o.alturaRelativa || 3.5,
+        tipo: o.tipo || 'arbol'
+      }));
+
+      const resSombra = Techo3D.calcularSombreadoPaneles(
+        state.distribucion.paneles,
+        obstaculosMetros,
+        pos.elevacionDeg,
+        pos.azimutDeg,
+        state.alturaNaveM || 8.0
+      );
+
+      // Cambiar material a sombreado en Three.js
+      if (state.threePanelMeshes && state.threePanelMeshes.length > 0) {
+        state.threePanelMeshes.forEach((item, idx) => {
+          if (resSombra.sombreados[idx]) {
+            item.mesh.material = item.shadowMat;
+          } else {
+            item.mesh.material = item.defaultMat;
+          }
+        });
+      }
+
+      // Actualizar texto informativo de sombras
+      const boxSombras = document.getElementById('boxSombrasInfo');
+      if (boxSombras) {
+        if (!pos.esDeDia) {
+          boxSombras.innerHTML = `<span>🌙 <strong>Noche:</strong> Sin radiación solar directa · Pérdida Anual Est.: ${state.perdidaSombrasAnualPct}%</span>`;
+        } else if (resSombra.pctSombra > 0) {
+          boxSombras.innerHTML = `<span>🌥️ <strong>Sombras Ahora:</strong> ${resSombra.pctSombra}% (${resSombra.cantSombreados} módulos sombreados) · Pérdida Anual Est.: ${state.perdidaSombrasAnualPct}%</span>`;
+        } else {
+          boxSombras.innerHTML = `<span>☀️ <strong>Sombras Ahora:</strong> 0% (100% despejado) · Pérdida Anual Est.: ${state.perdidaSombrasAnualPct}%</span>`;
+        }
+      }
+    }
   }
 
   /**
@@ -735,6 +944,8 @@
    */
   function actualizarEscena3D(puntosMetros, distribucion) {
     if (!state.threeBuildingGroup) return;
+
+    state.threePanelMeshes = [];
 
     // Limpiar objetos anteriores
     while (state.threeBuildingGroup.children.length > 0) {
@@ -775,67 +986,213 @@
     buildingMesh.receiveShadow = true;
     state.threeBuildingGroup.add(buildingMesh);
 
-    // 3. Crear cubierta / techo
+    // 3. Crear cubierta / techo según tipoCubierta
     const roofMat = new THREE.MeshStandardMaterial({
       color: 0x334155,
       roughness: 0.7
     });
-    const roofGeo = new THREE.ShapeGeometry(shape);
-    const roofMesh = new THREE.Mesh(roofGeo, roofMat);
-    roofMesh.position.z = alturaEdificio + 0.05;
-    roofMesh.receiveShadow = true;
-    state.threeBuildingGroup.add(roofMesh);
 
-    // 4. Crear los paneles solares 3D
+    if (state.tipoCubierta === 'plano' || state.tipoNave === 'losa' || state.tipoNave === 'suelo') {
+      // Losa plana con muro perimetral (parapeto)
+      const roofGeo = new THREE.ShapeGeometry(shape);
+      const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+      roofMesh.position.z = alturaEdificio + 0.05;
+      roofMesh.receiveShadow = true;
+      state.threeBuildingGroup.add(roofMesh);
+
+      // Parapeto perimetral de 0.7m
+      const parapetMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.8 });
+      for (let i = 0; i < puntosMetros.length; i++) {
+        const j = (i + 1) % puntosMetros.length;
+        const p1 = puntosMetros[i];
+        const p2 = puntosMetros[j];
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const ang = Math.atan2(dy, dx);
+
+        const wallGeo = new THREE.BoxGeometry(len, 0.25, 0.7);
+        const wallMesh = new THREE.Mesh(wallGeo, parapetMat);
+        wallMesh.position.set((p1.x + p2.x) / 2, (p1.y + p2.y) / 2, alturaEdificio + 0.35);
+        wallMesh.rotation.z = ang;
+        wallMesh.castShadow = true;
+        wallMesh.receiveShadow = true;
+        state.threeBuildingGroup.add(wallMesh);
+      }
+    } else if (state.tipoCubierta === 'dos_aguas') {
+      // Techo a dos aguas con cumbrera central
+      const roofGeo = new THREE.ShapeGeometry(shape);
+      const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+      roofMesh.position.z = alturaEdificio + 0.05;
+      roofMesh.receiveShadow = true;
+      state.threeBuildingGroup.add(roofMesh);
+
+      // Cumbrera central elevada
+      const azRad = (distribucion ? distribucion.azimutDeg : 0) * (Math.PI / 180);
+      const ridgeLen = Math.sqrt(distribucion ? distribucion.areaTotalTecho : 400);
+      const ridgeGeo = new THREE.BoxGeometry(ridgeLen * 0.9, 0.35, 1.2);
+      const ridgeMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 });
+      const ridge = new THREE.Mesh(ridgeGeo, ridgeMat);
+      ridge.position.set(0, 0, alturaEdificio + 0.6);
+      ridge.rotation.z = azRad;
+      ridge.castShadow = true;
+      ridge.receiveShadow = true;
+      state.threeBuildingGroup.add(ridge);
+    } else {
+      // Techo estándar
+      const roofGeo = new THREE.ShapeGeometry(shape);
+      const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+      roofMesh.position.z = alturaEdificio + 0.05;
+      roofMesh.receiveShadow = true;
+      state.threeBuildingGroup.add(roofMesh);
+    }
+
+    // 4. Crear los paneles solares 3D (con estructura coplanar o triángulos elevados)
     if (distribucion && distribucion.paneles) {
-      const panelMat = new THREE.MeshStandardMaterial({
-        color: 0x1e3a8a,      // Azul oscuro monocristalino
-        roughness: 0.2,
-        metalness: 0.85
-      });
       const frameMat = new THREE.MeshStandardMaterial({
         color: 0x94a3b8,      // Marco de aluminio
         roughness: 0.4
       });
 
-      distribucion.paneles.forEach(p => {
+      const esTriangulos = state.tipoEstructura === 'triangulos' || state.tipoNave === 'losa' || state.tipoNave === 'suelo';
+      const tiltRad = (esTriangulos ? state.inclinacionDeg : 0) * (Math.PI / 180);
+
+      distribucion.paneles.forEach((p, idx) => {
         const pGroup = new THREE.Group();
         pGroup.position.set(p.x, p.y, alturaEdificio + 0.2);
         pGroup.rotation.z = p.rotacionRad;
 
-        // Celda solar
+        // Si es estructura con triángulos, inclinar el panel y renderizar caballetes de soporte
+        if (esTriangulos && tiltRad > 0.05) {
+          pGroup.rotation.x = -tiltRad;
+          const hElevacion = (p.alto / 2) * Math.sin(tiltRad);
+          pGroup.position.z += hElevacion + 0.08;
+
+          // Patas de aluminio traseras que sostienen el ángulo del panel
+          const hPata = p.alto * Math.sin(tiltRad);
+          const legGeo = new THREE.CylinderGeometry(0.025, 0.025, hPata, 4);
+          const legMesh1 = new THREE.Mesh(legGeo, frameMat);
+          legMesh1.position.set(-p.ancho * 0.4, -p.alto * 0.45, -hPata / 2);
+          legMesh1.rotation.x = Math.PI / 2;
+          pGroup.add(legMesh1);
+
+          const legMesh2 = legMesh1.clone();
+          legMesh2.position.x = p.ancho * 0.4;
+          pGroup.add(legMesh2);
+        }
+
+        // Materiales para estado iluminado vs sombreado
+        const defaultMat = new THREE.MeshStandardMaterial({
+          color: 0x1e3a8a,      // Azul oscuro monocristalino
+          roughness: 0.2,
+          metalness: 0.85
+        });
+        const shadowMat = new THREE.MeshStandardMaterial({
+          color: 0x091428,      // Tono opaco sombreado
+          roughness: 0.85,
+          metalness: 0.1
+        });
+
         const cellGeo = new THREE.BoxGeometry(p.ancho, p.alto, 0.06);
-        const cellMesh = new THREE.Mesh(cellGeo, panelMat);
+        const cellMesh = new THREE.Mesh(cellGeo, defaultMat);
         cellMesh.castShadow = true;
         cellMesh.receiveShadow = true;
         pGroup.add(cellMesh);
+
+        state.threePanelMeshes.push({
+          mesh: cellMesh,
+          defaultMat,
+          shadowMat,
+          idx
+        });
 
         state.threeBuildingGroup.add(pGroup);
       });
     }
 
-    // 5. Obstáculos 3D (Árboles o Chimeneas)
+    // 5. Obstáculos 3D según su tipo (Árbol, Chimenea, HVAC, Domo, Antena)
     state.obstaculos.forEach(obs => {
       const { centro, mPorLat, mPorLng } = Techo3D.proyectarMetros(state.puntosPoligono);
       const ox = (obs.lng - centro.lng) * mPorLng;
       const oy = (obs.lat - centro.lat) * mPorLat;
+      const r = obs.radio || 2.5;
+      const hRel = obs.alturaRelativa || 3.5;
+      const tipo = obs.tipo || 'arbol';
 
-      // Tronco del árbol
-      const trunkGeo = new THREE.CylinderGeometry(0.4, 0.5, 6, 8);
-      trunkGeo.rotateX(Math.PI / 2);
-      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
-      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-      trunk.position.set(ox, oy, 3);
-      trunk.castShadow = true;
-      state.threeBuildingGroup.add(trunk);
+      const obsGroup = new THREE.Group();
+      obsGroup.position.set(ox, oy, alturaEdificio);
 
-      // Copa esférica del árbol (proyecta sombra sobre los paneles)
-      const crownGeo = new THREE.SphereGeometry(obs.radio || 2.5, 12, 12);
-      const crownMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.8 });
-      const crown = new THREE.Mesh(crownGeo, crownMat);
-      crown.position.set(ox, oy, 7);
-      crown.castShadow = true;
-      state.threeBuildingGroup.add(crown);
+      if (tipo === 'arbol') {
+        // Árbol que nace desde el suelo
+        const trunkH = alturaEdificio + 1.5;
+        const trunkGeo = new THREE.CylinderGeometry(0.35, 0.5, trunkH, 8);
+        trunkGeo.rotateX(Math.PI / 2);
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+        trunk.position.set(0, 0, -alturaEdificio + trunkH / 2);
+        trunk.castShadow = true;
+        obsGroup.add(trunk);
+
+        const crownGeo = new THREE.SphereGeometry(r, 12, 12);
+        const crownMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.8 });
+        const crown = new THREE.Mesh(crownGeo, crownMat);
+        crown.position.set(0, 0, trunkH - alturaEdificio + r * 0.4);
+        crown.castShadow = true;
+        obsGroup.add(crown);
+      } else if (tipo === 'chimenea') {
+        const chimGeo = new THREE.CylinderGeometry(r * 0.7, r * 0.8, hRel, 12);
+        chimGeo.rotateX(Math.PI / 2);
+        const chimMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8, roughness: 0.3 });
+        const chim = new THREE.Mesh(chimGeo, chimMat);
+        chim.position.set(0, 0, hRel / 2);
+        chim.castShadow = true;
+        obsGroup.add(chim);
+
+        const capGeo = new THREE.ConeGeometry(r * 1.1, 0.4, 12);
+        capGeo.rotateX(Math.PI / 2);
+        const cap = new THREE.Mesh(capGeo, chimMat);
+        cap.position.set(0, 0, hRel + 0.2);
+        cap.castShadow = true;
+        obsGroup.add(cap);
+      } else if (tipo === 'hvac') {
+        const boxGeo = new THREE.BoxGeometry(r * 1.6, r * 1.6, hRel);
+        const boxMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.5, roughness: 0.4 });
+        const box = new THREE.Mesh(boxGeo, boxMat);
+        box.position.set(0, 0, hRel / 2);
+        box.castShadow = true;
+        obsGroup.add(box);
+
+        const fanGeo = new THREE.CylinderGeometry(r * 0.5, r * 0.5, 0.08, 12);
+        fanGeo.rotateX(Math.PI / 2);
+        const fanMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+        const fan = new THREE.Mesh(fanGeo, fanMat);
+        fan.position.set(0, 0, hRel + 0.04);
+        obsGroup.add(fan);
+      } else if (tipo === 'domo') {
+        const domeGeo = new THREE.SphereGeometry(r, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+        domeGeo.rotateX(Math.PI / 2);
+        const domeMat = new THREE.MeshStandardMaterial({
+          color: 0x38bdf8,
+          transparent: true,
+          opacity: 0.65,
+          roughness: 0.1,
+          metalness: 0.1
+        });
+        const dome = new THREE.Mesh(domeGeo, domeMat);
+        dome.position.set(0, 0, 0);
+        dome.castShadow = true;
+        obsGroup.add(dome);
+      } else if (tipo === 'antena') {
+        const mastGeo = new THREE.CylinderGeometry(0.08, 0.15, hRel, 6);
+        mastGeo.rotateX(Math.PI / 2);
+        const mastMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.7 });
+        const mast = new THREE.Mesh(mastGeo, mastMat);
+        mast.position.set(0, 0, hRel / 2);
+        mast.castShadow = true;
+        obsGroup.add(mast);
+      }
+
+      state.threeBuildingGroup.add(obsGroup);
     });
 
     // Ajustar cámara para encuadrar el nuevo edificio
@@ -928,10 +1285,51 @@
     });
 
     // Herramientas del mapa
+    const btnAutoDetect = document.getElementById('btnAutoDetectarTecho');
     const btnTecho = document.getElementById('btnHerramientaTecho');
     const btnObs = document.getElementById('btnHerramientaObstaculo');
     const btnLimpiar = document.getElementById('btnLimpiarTecho');
-    const chkEtiquetas = document.getElementById('chkEtiquetasCalles');
+    const selCapa = document.getElementById('selCapaMapa');
+
+    if (btnAutoDetect && mapa) {
+      btnAutoDetect.addEventListener('click', async () => {
+        btnAutoDetect.disabled = true;
+        btnAutoDetect.textContent = '🪄 Buscando…';
+        const center = mapa.getCenter();
+        const res = await Techo3D.fetchHuellaEdificioOSM(center.lat, center.lng);
+        if (res.ok && res.puntos && res.puntos.length >= 3) {
+          state.puntosPoligono = res.puntos.slice();
+          actualizarTrazadoEnMapa();
+          actualizarDimensionamiento();
+          if (typeof window.toast === 'function') {
+            window.toast('🪄 Huella de edificio detectada con éxito');
+          }
+        } else {
+          alert('No se detectó una huella registrada en este punto exacto.\n\nPodés trazar las esquinas con [ ✏️ Trazar Techo ] o cargar una plantilla rápida de nave.');
+        }
+        btnAutoDetect.disabled = false;
+        btnAutoDetect.textContent = '🪄 Auto-Detectar';
+      });
+    }
+
+    if (selCapa && mapa) {
+      selCapa.addEventListener('change', e => {
+        const v = e.target.value;
+        if (v === 'satelital') {
+          if (!mapa.hasLayer(capaSatelital)) mapa.addLayer(capaSatelital);
+          if (mapa.hasLayer(capaEtiquetas)) mapa.removeLayer(capaEtiquetas);
+          if (capaOSM && mapa.hasLayer(capaOSM)) mapa.removeLayer(capaOSM);
+        } else if (v === 'hibrido') {
+          if (!mapa.hasLayer(capaSatelital)) mapa.addLayer(capaSatelital);
+          if (!mapa.hasLayer(capaEtiquetas)) mapa.addLayer(capaEtiquetas);
+          if (capaOSM && mapa.hasLayer(capaOSM)) mapa.removeLayer(capaOSM);
+        } else if (v === 'calles') {
+          if (mapa.hasLayer(capaSatelital)) mapa.removeLayer(capaSatelital);
+          if (mapa.hasLayer(capaEtiquetas)) mapa.removeLayer(capaEtiquetas);
+          if (capaOSM && !mapa.hasLayer(capaOSM)) mapa.addLayer(capaOSM);
+        }
+      });
+    }
 
     if (btnTecho) {
       btnTecho.addEventListener('click', () => {
@@ -956,12 +1354,11 @@
         actualizarDimensionamiento();
       });
     }
-    if (chkEtiquetas && capaEtiquetas && mapa) {
-      chkEtiquetas.addEventListener('change', e => {
-        if (e.target.checked) mapa.addLayer(capaEtiquetas);
-        else mapa.removeLayer(capaEtiquetas);
-      });
-    }
+
+    document.getElementById('selTipoEstructura')?.addEventListener('change', e => {
+      state.tipoEstructura = e.target.value;
+      actualizarDimensionamiento();
+    });
 
     // Presets rápidos en 90 segundos
     document.getElementById('btnPresetNaveGrande')?.addEventListener('click', () => cargarPreset('industrial'));
@@ -1055,8 +1452,67 @@
       actualizarDimensionamiento();
     });
 
+    document.getElementById('selTipoCubierta')?.addEventListener('change', e => {
+      state.tipoCubierta = e.target.value;
+      actualizarDimensionamiento();
+    });
+
     document.getElementById('btnRecalcularLayout')?.addEventListener('click', () => {
       actualizarDimensionamiento();
+    });
+
+    // Botón manual para agregar obstáculo
+    document.getElementById('btnAddObsManual')?.addEventListener('click', () => {
+      if (state.puntosPoligono.length < 3) {
+        alert('Primero trazá o cargá una nave para ubicar el obstáculo.');
+        return;
+      }
+      const { centro } = Techo3D.proyectarMetros(state.puntosPoligono);
+      const offsetLat = (Math.random() - 0.5) * 0.0001;
+      const offsetLng = (Math.random() - 0.5) * 0.0001;
+      state.obstaculos.push({
+        id: 'obs_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+        lat: centro.lat + offsetLat,
+        lng: centro.lng + offsetLng,
+        radio: 2.5,
+        alturaRelativa: 3.5,
+        tipo: 'hvac'
+      });
+      actualizarObstaculosEnMapa();
+      actualizarDimensionamiento();
+    });
+
+    // Botones de presets de cámara 3D
+    document.getElementById('btnCamTop')?.addEventListener('click', () => {
+      if (state.threeCamera && state.threeControls) {
+        state.threeCamera.position.set(0, 0, 75);
+        state.threeControls.target.set(0, 0, 0);
+        state.threeControls.update();
+      }
+    });
+
+    document.getElementById('btnCamIso')?.addEventListener('click', () => {
+      if (state.threeCamera && state.threeControls) {
+        state.threeCamera.position.set(-45, -55, 45);
+        state.threeControls.target.set(0, 0, (state.alturaNaveM || 8) / 2);
+        state.threeControls.update();
+      }
+    });
+
+    document.getElementById('btnCamFront')?.addEventListener('click', () => {
+      if (state.threeCamera && state.threeControls) {
+        state.threeCamera.position.set(0, -65, (state.alturaNaveM || 8) + 3);
+        state.threeControls.target.set(0, 0, state.alturaNaveM || 8);
+        state.threeControls.update();
+      }
+    });
+
+    document.getElementById('btnCamReset')?.addEventListener('click', () => {
+      if (state.threeCamera && state.threeControls) {
+        state.threeCamera.position.set(0, -50, 45);
+        state.threeControls.target.set(0, 0, (state.alturaNaveM || 8) / 2);
+        state.threeControls.update();
+      }
     });
 
     // =========================================================================
@@ -1083,15 +1539,25 @@
       p.inclinacion = state.inclinacionDeg;
       p.azimut = d.azimutDeg;
 
+      // Inyectar factor de pérdida por sombras calculado del 3D
+      if (p.perdidas) {
+        p.perdidas.sombras = Math.max(0.5, Math.round(state.perdidaSombrasAnualPct * 10) / 10);
+      }
+      p.techo3d = guardarEstado();
+
+      if (typeof window.marcarDirty === 'function') {
+        window.marcarDirty();
+      }
+
       // Notificar y recalcular
       if (typeof window.recalcular === 'function') {
         window.recalcular();
       }
 
       if (typeof window.toast === 'function') {
-        window.toast(`⚡ Proyecto actualizado: ${d.count} módulos (${d.potenciaKwp} kWp)`);
+        window.toast(`⚡ Proyecto actualizado: ${d.count} módulos (${d.potenciaKwp} kWp) | Sombras: ${state.perdidaSombrasAnualPct}%`);
       } else {
-        alert(`⚡ Proyecto actualizado con éxito:\n\n• Potencia: ${d.potenciaKwp} kWp\n• Módulos: ${d.count} u.\n• Inclinación: ${state.inclinacionDeg}°\n• Azimut: ${d.azimutDeg}°`);
+        alert(`⚡ Proyecto actualizado con éxito:\n\n• Potencia: ${d.potenciaKwp} kWp\n• Módulos: ${d.count} u.\n• Inclinación: ${state.inclinacionDeg}°\n• Azimut: ${d.azimutDeg}°\n• Factor de sombras 3D: ${state.perdidaSombrasAnualPct}%`);
       }
     });
 
@@ -1150,15 +1616,21 @@
       wM = 50; hM = 24; // 1200 m²
       state.tipoNave = 'industrial';
       state.alturaNaveM = 8;
+      state.tipoCubierta = 'dos_aguas';
     } else if (tipo === 'comercial') {
       wM = 30; hM = 15; // 450 m²
       state.tipoNave = 'comercial';
       state.alturaNaveM = 6;
+      state.tipoCubierta = 'un_agua';
     } else if (tipo === 'losa') {
       wM = 20; hM = 15; // 300 m²
       state.tipoNave = 'losa';
       state.alturaNaveM = 10;
+      state.tipoCubierta = 'plano';
     }
+
+    const selCob = document.getElementById('selTipoCubierta');
+    if (selCob) selCob.value = state.tipoCubierta;
 
     const latRad = baseLat * (Math.PI / 180);
     const dLat = (hM / 2) / 111132.954;
@@ -1174,9 +1646,11 @@
     // Obstáculo de demostración (ej: árbol cercano que arroja sombra)
     state.obstaculos = [
       {
+        id: 'obs_demo_1',
         lat: baseLat + dLat * 0.4,
         lng: baseLng - dLng * 1.3,
         radio: 3.5,
+        alturaRelativa: 8.0,
         tipo: 'arbol'
       }
     ];
@@ -1190,6 +1664,95 @@
     }
   }
 
+  function guardarEstado() {
+    let snapshot = null;
+    if (state.threeRenderer) {
+      try {
+        snapshot = state.threeRenderer.domElement.toDataURL('image/jpeg', 0.85);
+      } catch (e) {}
+    }
+    return {
+      lat: state.lat,
+      lng: state.lng,
+      zoom: (mapa && typeof mapa.getZoom === 'function') ? mapa.getZoom() : state.zoom,
+      puntosPoligono: state.puntosPoligono.slice(),
+      obstaculos: state.obstaculos.slice(),
+      tipoNave: state.tipoNave,
+      alturaNaveM: state.alturaNaveM,
+      tipoCubierta: state.tipoCubierta,
+      potenciaPanelWp: state.potenciaPanelWp,
+      orientacionPanel: state.orientacionPanel,
+      inclinacionDeg: state.inclinacionDeg,
+      azimutManual: state.azimutManual,
+      distribucion: state.distribucion,
+      perdidaSombrasAnualPct: state.perdidaSombrasAnualPct,
+      snapshotDataUrl: snapshot
+    };
+  }
+
+  function cargarEstado(datos) {
+    if (!datos) return;
+    if (datos.lat !== undefined) state.lat = datos.lat;
+    if (datos.lng !== undefined) state.lng = datos.lng;
+    if (datos.zoom !== undefined) state.zoom = datos.zoom;
+    if (Array.isArray(datos.puntosPoligono)) state.puntosPoligono = datos.puntosPoligono.slice();
+    if (Array.isArray(datos.obstaculos)) state.obstaculos = datos.obstaculos.slice();
+    if (datos.tipoNave) state.tipoNave = datos.tipoNave;
+    if (datos.alturaNaveM) state.alturaNaveM = datos.alturaNaveM;
+    if (datos.tipoCubierta) state.tipoCubierta = datos.tipoCubierta;
+    if (datos.potenciaPanelWp) state.potenciaPanelWp = datos.potenciaPanelWp;
+    if (datos.orientacionPanel) state.orientacionPanel = datos.orientacionPanel;
+    if (datos.inclinacionDeg !== undefined) state.inclinacionDeg = datos.inclinacionDeg;
+    if (datos.azimutManual !== undefined) state.azimutManual = datos.azimutManual;
+    if (datos.perdidaSombrasAnualPct !== undefined) state.perdidaSombrasAnualPct = datos.perdidaSombrasAnualPct;
+
+    // Actualizar campos en el DOM si ya existen
+    const inpAlt = document.getElementById('inpAlturaNave');
+    if (inpAlt) inpAlt.value = state.alturaNaveM;
+    const selNave = document.getElementById('selTipoNave');
+    if (selNave) selNave.value = state.tipoNave;
+    const selCub = document.getElementById('selTipoCubierta');
+    if (selCub) selCub.value = state.tipoCubierta;
+    const selPot = document.getElementById('selPotenciaPanel');
+    if (selPot) selPot.value = state.potenciaPanelWp;
+    const selOri = document.getElementById('selOrientacionPanel');
+    if (selOri) selOri.value = state.orientacionPanel;
+    const inpInc = document.getElementById('inpInclinacionTecho');
+    if (inpInc) inpInc.value = state.inclinacionDeg;
+    const inpAz = document.getElementById('inpAzimutTecho');
+    if (inpAz && state.azimutManual !== null) inpAz.value = state.azimutManual;
+
+    if (mapa) {
+      mapa.setView([state.lat, state.lng], state.zoom || 19);
+      actualizarTrazadoEnMapa();
+      actualizarObstaculosEnMapa();
+      actualizarDimensionamiento();
+    }
+  }
+
+  function obtenerResumen() {
+    if (!state.distribucion || state.distribucion.count <= 0) return null;
+    let snapshot = null;
+    if (state.threeRenderer) {
+      try {
+        snapshot = state.threeRenderer.domElement.toDataURL('image/jpeg', 0.85);
+      } catch (e) {}
+    }
+    return {
+      potenciaKwp: state.distribucion.potenciaKwp,
+      cantidadPaneles: state.distribucion.count,
+      areaTechoM2: state.distribucion.areaTotalTecho,
+      areaOcupadaM2: state.distribucion.areaOcupadaM2,
+      factorOcupacionPct: state.distribucion.factorOcupacionPct,
+      azimutDeg: state.distribucion.azimutDeg,
+      inclinacionDeg: state.inclinacionDeg,
+      tipoNave: state.tipoNave,
+      alturaNaveM: state.alturaNaveM,
+      potenciaPanelWp: state.potenciaPanelWp,
+      snapshotDataUrl: snapshot
+    };
+  }
+
   function fmtNum(n) {
     if (n === null || n === undefined || isNaN(n)) return '0';
     return Math.round(n).toLocaleString('es-AR');
@@ -1197,6 +1760,9 @@
 
   return {
     init,
-    actualizarDimensionamiento
+    actualizarDimensionamiento,
+    guardarEstado,
+    cargarEstado,
+    obtenerResumen
   };
 });
