@@ -382,9 +382,20 @@
    */
   function onMapaClick(e) {
     if (state.modoDibujo === 'techo') {
+      // Si el nuevo punto está a más de 1.5 km de los puntos previos, reiniciar polígono (evita mezclar localidades)
+      if (state.puntosPoligono.length > 0) {
+        const p0 = state.puntosPoligono[0];
+        const distAproxM = Math.hypot((e.latlng.lat - p0[0]) * 111132, (e.latlng.lng - p0[1]) * 111132 * Math.cos(p0[0] * Math.PI / 180));
+        if (distAproxM > 1500) {
+          state.puntosPoligono = [];
+        }
+      }
+
       state.puntosPoligono.push([e.latlng.lat, e.latlng.lng]);
       actualizarTrazadoEnMapa();
-      actualizarDimensionamiento();
+      if (state.puntosPoligono.length >= 3) {
+        actualizarDimensionamiento();
+      }
     } else if (state.modoDibujo === 'obstaculo') {
       state.obstaculos.push({
         id: 'obs_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
@@ -410,13 +421,29 @@
 
     // Marcadores de vértices
     state.puntosPoligono.forEach((pt, idx) => {
+      const esPrimero = idx === 0;
       const icon = L.divIcon({
         className: 'vertice-marker',
-        html: `<div style="background:#2563eb; width:12px; height:12px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 6px rgba(0,0,0,0.5);"></div>`,
-        iconSize: [12, 12],
-        iconAnchor: [6, 6]
+        html: `<div style="background:${esPrimero ? '#10b981' : '#2563eb'}; width:16px; height:16px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 6px rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; color:#fff; font-size:9.5px; font-weight:800; cursor:pointer;">${idx + 1}</div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
       });
-      L.marker(pt, { icon }).addTo(capaPoligono);
+      const marker = L.marker(pt, { icon }).addTo(capaPoligono);
+
+      if (esPrimero && state.puntosPoligono.length >= 3) {
+        marker.bindTooltip('✅ Clic acá para cerrar el techo', { permanent: true, direction: 'top', offset: [0, -10] });
+        marker.on('click', (ev) => {
+          if (ev && ev.originalEvent) ev.originalEvent.stopPropagation();
+          state.modoDibujo = 'vista';
+          const btnT = document.getElementById('btnHerramientaTecho');
+          if (btnT) btnT.className = 'btn btn-sm btn-primario';
+          actualizarTrazadoEnMapa();
+          actualizarDimensionamiento();
+          if (typeof window.toast === 'function') {
+            window.toast('✨ Techo cerrado y dimensionado con éxito');
+          }
+        });
+      }
     });
 
     // Línea o polígono cerrado
@@ -1224,6 +1251,12 @@
             const lng = parseFloat(data[0].lon);
             state.lat = lat;
             state.lng = lng;
+            // Limpiar polígono previo de otra localidad para evitar mezclar coordenadas
+            state.puntosPoligono = [];
+            state.obstaculos = [];
+            actualizarTrazadoEnMapa();
+            actualizarObstaculosEnMapa();
+            actualizarDimensionamiento();
             if (mapa) {
               mapa.flyTo([lat, lng], 18);
             }
@@ -1334,8 +1367,14 @@
     if (btnTecho) {
       btnTecho.addEventListener('click', () => {
         state.modoDibujo = 'techo';
+        state.puntosPoligono = [];
+        actualizarTrazadoEnMapa();
+        actualizarDimensionamiento();
         btnTecho.className = 'btn btn-sm btn-primario';
         if (btnObs) btnObs.className = 'btn btn-sm';
+        if (typeof window.toast === 'function') {
+          window.toast('📍 Hacé clic en las esquinas de la fábrica en el mapa para marcar el techo');
+        }
       });
     }
     if (btnObs) {
@@ -1606,9 +1645,12 @@
    * Carga una plantilla predefinida de nave para demostración en 90 segundos
    */
   function cargarPreset(tipo) {
-    // Coordenadas base (Parque Industrial Pilar)
-    const baseLat = state.lat;
-    const baseLng = state.lng;
+    // Tomar centro visible actual del mapa
+    const center = (mapa && typeof mapa.getCenter === 'function') ? mapa.getCenter() : { lat: state.lat, lng: state.lng };
+    const baseLat = center.lat;
+    const baseLng = center.lng;
+    state.lat = baseLat;
+    state.lng = baseLng;
 
     // Generar rectángulo proporcional
     let wM = 40, hM = 30; // metros
@@ -1659,8 +1701,8 @@
     actualizarObstaculosEnMapa();
     actualizarDimensionamiento();
 
-    if (mapa) {
-      mapa.setView([baseLat, baseLng], 19);
+    if (mapa && mapa.getZoom() < 18) {
+      mapa.setView([baseLat, baseLng], 18);
     }
   }
 

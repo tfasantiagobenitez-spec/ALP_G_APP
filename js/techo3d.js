@@ -216,9 +216,22 @@
       if (p.y < minY) minY = p.y;
       if (p.y > maxY) maxY = p.y;
     }
+    const spanX = maxX - minX;
+    const spanY = maxY - minY;
 
-    const pasoX = wModulo + opts.espacioEntrePaneles;
-    const pasoY = hModulo + opts.espacioEntreFilas;
+    // Protección estricta contra polígonos anómalos o distancias kilométricas entre puntos
+    if (spanX > 800 || spanY > 800 || spanX <= 0 || spanY <= 0 || isNaN(spanX) || isNaN(spanY)) {
+      const areaTotalTecho = Math.min(100000, calcAreaPerimetro(puntosMetros).areaM2);
+      return { paneles: [], count: 0, potenciaKwp: 0, areaOcupadaM2: 0, factorOcupacionPct: 0, areaTotalTecho, azimutDeg };
+    }
+
+    const pasoX = Math.max(0.5, wModulo + (opts.espacioEntrePaneles || 0.05));
+    const pasoY = Math.max(0.5, hModulo + (opts.espacioEntreFilas || 0.15));
+
+    // Límite de seguridad de iteraciones para garantizar 60 fps y fluidez total
+    if ((spanX / pasoX) * (spanY / pasoY) > 8000) {
+      return { paneles: [], count: 0, potenciaKwp: 0, areaOcupadaM2: 0, factorOcupacionPct: 0, azimutDeg };
+    }
 
     const paneles = [];
     const cosOrig = Math.cos(rotacionRad);
@@ -227,6 +240,7 @@
     // Iterar la retícula sobre el área delimitada
     for (let rx = minX + opts.margenBorde + wModulo / 2; rx <= maxX - opts.margenBorde - wModulo / 2; rx += pasoX) {
       for (let ry = minY + opts.margenBorde + hModulo / 2; ry <= maxY - opts.margenBorde - hModulo / 2; ry += pasoY) {
+        if (paneles.length >= 2000) break; // Límite para proyectos de escala pyme/industrial
         // Convertir el punto candidato de vuelta a coordenadas del mundo
         const wx = rx * cosOrig - ry * sinOrig;
         const wy = rx * sinOrig + ry * cosOrig;
