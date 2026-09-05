@@ -229,7 +229,7 @@
     const pasoY = Math.max(0.5, hModulo + (opts.espacioEntreFilas || 0.15));
 
     // Límite de seguridad de iteraciones para garantizar 60 fps y fluidez total
-    if ((spanX / pasoX) * (spanY / pasoY) > 8000) {
+    if ((spanX / pasoX) * (spanY / pasoY) > 30000) {
       return { paneles: [], count: 0, potenciaKwp: 0, areaOcupadaM2: 0, factorOcupacionPct: 0, azimutDeg };
     }
 
@@ -240,7 +240,7 @@
     // Iterar la retícula sobre el área delimitada
     for (let rx = minX + opts.margenBorde + wModulo / 2; rx <= maxX - opts.margenBorde - wModulo / 2; rx += pasoX) {
       for (let ry = minY + opts.margenBorde + hModulo / 2; ry <= maxY - opts.margenBorde - hModulo / 2; ry += pasoY) {
-        if (paneles.length >= 2000) break; // Límite para proyectos de escala pyme/industrial
+        if (paneles.length >= 8000) break; // Límite para mega plantas industriales y centros logísticos
         // Convertir el punto candidato de vuelta a coordenadas del mundo
         const wx = rx * cosOrig - ry * sinOrig;
         const wy = rx * sinOrig + ry * cosOrig;

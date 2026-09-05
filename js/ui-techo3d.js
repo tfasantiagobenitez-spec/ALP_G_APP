@@ -665,6 +665,7 @@
 
     if (!resultado || !resultado.paneles || resultado.paneles.length === 0) return;
 
+    const todosLosPoligonos = [];
     resultado.paneles.forEach(p => {
       // 4 esquinas del panel en metros
       const cosR = Math.cos(p.rotacionRad);
@@ -680,18 +681,19 @@
       ];
 
       // Convertir esquinas a [lat, lng]
-      const esquinasLatLng = esquinasMetros.map(e => [
+      todosLosPoligonos.push(esquinasMetros.map(e => [
         centro.lat + (e.y / mPorLat),
         centro.lng + (e.x / mPorLng)
-      ]);
-
-      L.polygon(esquinasLatLng, {
-        color: '#1d4ed8',
-        weight: 1,
-        fillColor: '#1e3a8a',
-        fillOpacity: 0.85
-      }).addTo(capaPaneles);
+      ]));
     });
+
+    // Renderizar con un solo path multi-polígono para máxima fluidez
+    L.polygon(todosLosPoligonos, {
+      color: '#1d4ed8',
+      weight: 1,
+      fillColor: '#1e3a8a',
+      fillOpacity: 0.85
+    }).addTo(capaPaneles);
   }
 
   /**
