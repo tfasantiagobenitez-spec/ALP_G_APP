@@ -24,3 +24,6 @@ yarn-error.log*
 .env.*.local
 
 .vercel
+
+# Credenciales locales de Supabase (nunca se versionan)
+supabase/credenciales.local.txt

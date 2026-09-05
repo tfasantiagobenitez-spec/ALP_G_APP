@@ -12,41 +12,44 @@
 (function () {
   'use strict';
 
-  const $ = s => document.querySelector(s);
-  const $$ = s => Array.from(document.querySelectorAll(s));
-
-  // ---------- Formato ----------
-  const fmtN = (n, d) => (n === null || n === undefined || isNaN(n)) ? '—'
-    : n.toLocaleString('es-AR', { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 });
-  const fmtARS = n => (n === null || n === undefined || isNaN(n)) ? '—' : '$ ' + fmtN(n, 0);
-  const fmtUSD = n => (n === null || n === undefined || isNaN(n)) ? '—' : 'U$D ' + fmtN(n, 0);
-  const fmtPct = (n, d) => (n === null || n === undefined || isNaN(n)) ? '—' : fmtN(n, d === undefined ? 1 : d) + ' %';
-  const fmtAnios = n => (n === null || n === undefined) ? 'No recupera' : fmtN(n, 1) + ' años';
-  const esc = s => String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // Selectores, formato, gráficos y avisos viven en ui-comun.js
+  const $ = UI0.$, $$ = UI0.$$;
+  const fmtN = UI0.fmtN, fmtARS = UI0.fmtARS, fmtUSD = UI0.fmtUSD;
+  const fmtPct = UI0.fmtPct, fmtAnios = UI0.fmtAnios, esc = UI0.esc, short = UI0.short;
+  const kpis = UI0.kpis, barChart = UI0.barChart, lineChart = UI0.lineChart, toast = UI0.toast;
 
   // ---------- Empresa / Membrete por defecto ----------
-  const KEY_MEMBRETE = 'alp_g_app_empresa_v1';
+  // Los datos de contacto arrancan vacíos a propósito: la propuesta no se imprime
+  // hasta que alguien cargue el teléfono y el email reales de la empresa.
   const KEY_TEMA = 'alp_g_app_tema_v1';
-  const DEFAULT_MEMBRETE = {
+  const DEFAULT_MEMBRETE = (window.DB && DB.MEMBRETE_DEFAULT) || {
     nombre: 'ALP GROUP',
     slogan: 'Ingeniería y Desarrollo Fotovoltaico · Autoconsumo & Eficiencia',
-    asesor: 'Equipo Comercial & Técnico',
-    tel: '+54 9 11 0000-0000',
-    email: 'contacto@alpgroup.com.ar',
+    asesor: '',
+    tel: '',
+    email: '',
     validez: '15',
     logo: 'img/logo.svg',
   };
 
+  /** Membrete ya cargado. En modo nube vive en la tabla `empresa` y lo comparte todo el equipo. */
   function getMembrete() {
-    try {
-      const raw = localStorage.getItem(KEY_MEMBRETE);
-      if (raw) return Object.assign({}, DEFAULT_MEMBRETE, JSON.parse(raw));
-    } catch (e) { console.warn(e); }
-    return DEFAULT_MEMBRETE;
+    return UI.membrete || DEFAULT_MEMBRETE;
   }
 
-  function setMembrete(m) {
-    try { localStorage.setItem(KEY_MEMBRETE, JSON.stringify(m)); } catch (e) { console.error(e); }
+  async function cargarMembrete() {
+    try { UI.membrete = await DB.empresa.get(); }
+    catch (e) { console.warn('No se pudo cargar el membrete:', e.message); UI.membrete = Object.assign({}, DEFAULT_MEMBRETE); }
+  }
+
+  /** Datos sin los cuales la propuesta no debería salir a la calle. */
+  function faltantesMembrete() {
+    const m = getMembrete();
+    const faltan = [];
+    if (!String(m.nombre || '').trim()) faltan.push('nombre de la empresa');
+    if (!String(m.tel || '').trim()) faltan.push('teléfono');
+    if (!String(m.email || '').trim()) faltan.push('email de contacto');
+    return faltan;
   }
 
   // ---------- Estado por defecto de un proyecto nuevo ----------
@@ -55,13 +58,28 @@
     presu_numero: '', presu_cuit: '', presu_paneles: '20', panel_w: '575',
     kwp: '11.5', usd_kwp: '650', tc: '1430', pr: '83', irrad: '1820', deg: '0.5',
     tarifa_resto: '120', inflacion: '0', horizonte: '20', tasa_desc: '10',
+    devaluacion: '0', moneda_analisis: 'usd', fiscal: 'simetrico', amort_anios: '5',
+    tarifa_tipo: 'simple', tarifa_pico: '', tarifa_valle: '',
+    banda_pico_desde: '18', banda_pico_hasta: '23', banda_valle_desde: '23', banda_valle_hasta: '5',
+    iva_pct: '0', iva_condicion: 'cf', cargo_fijo: '0',
+    pot_contratada: '0', cargo_pot: '0', reducePotencia: 'no',
+    irrad_fuente: 'tabla', inclinacion: '25', azimut: '0', albedo: '0.2', pr_fuente: 'manual',
+    inv_potencia_ac: '0', inv_v_min: '200', inv_v_max: '1000', inv_v_arranque: '150',
+    inv_mppt: '2', inv_i_max_mppt: '15',
+    mod_voc: '51.8', mod_vmp: '43.4', mod_isc: '14.05', mod_imp: '13.25',
+    mod_coef_voc: '-0.25', mod_noct: '45', mod_coef_pot: '-0.35',
+    temp_min: '-5', temp_max: '40',
+    pr_monto_pct: '0', pr_tasa: '0', pr_plazo: '60', pr_sistema: 'frances',
+    pr_moneda: 'usd', pr_ajuste: '0', pr_gastos_pct: '0',
+    ppa_tarifa: '0', ppa_plazo: '15', ppa_ajuste: '0', ppa_opcion: '0',
     opex_pct: '0.5', recambio_pct: '10', recambio_cada: '11', factor_co2: '0.45',
     incluirBateria: 'no', bat_kwh: '10', bat_usd_kwh: '450', bat_dod: '80', bat_tipo: 'litio',
+    bat_ef: '92', bat_crate: '0.5', bat_vida: '12', bat_recambio_pct: '70',
     impData: JSON.stringify([{ nombre: 'Impuestos', pct: 10.5 }, { nombre: '', pct: 0 }, { nombre: '', pct: 0 }, { nombre: '', pct: 0 }, { nombre: '', pct: 0 }]),
     genM: JSON.stringify(Calc.estimarGeneracion(11.5, 1820, 83)),
     conM: JSON.stringify([2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000]),
     conEst: JSON.stringify([false, false, false, false, false, false, false, false, false, false, false, false]),
-    genFuente: 'estimada', excModo: 'sin', tarifa_iny: '0',
+    genFuente: 'estimada', excModo: 'sin', tarifa_iny: '0', modeloAuto: 'horario',
     l_canon_kwp: '14', l_pago_ini: '7500', l_opcion: '2300', l_seguro: '790', l_mtto: '1700', l_plazo: '60',
     l_tasa_gan: '30', lGanancias: 'si', incluirRecambio: 'no',
   };
@@ -95,6 +113,12 @@
         { k: 'irrad', l: 'Irradiación anual (plano paneles)', u: 'kWh/m²', step: 0.1 },
         { k: 'deg', l: 'Degradación anual de paneles', u: '%/año', step: 0.1 },
         { k: 'factor_co2', l: 'Factor emisión CO₂ de red', u: 'kg CO₂/kWh', step: 0.01 },
+        {
+          k: 'modeloAuto', l: 'Modelo de autoconsumo', t: 'select', o: [
+            ['horario', 'Horario · simulación 12 × 24 h (recomendado)'],
+            ['mensual', 'Mensual · mín(generación, consumo) — versión anterior'],
+          ]
+        },
       ]
     },
     {
@@ -104,24 +128,114 @@
         { k: 'bat_kwh', l: 'Capacidad total de banco', u: 'kWh', step: 0.5 },
         { k: 'bat_usd_kwh', l: 'Costo unitario batería', u: 'U$D/kWh', step: 1 },
         { k: 'bat_dod', l: 'Profundidad de descarga (DoD)', u: '%', step: 1 },
+        { k: 'bat_ef', l: 'Rendimiento ida y vuelta', u: '%', step: 0.5 },
+        { k: 'bat_crate', l: 'Potencia máx. de carga / descarga', u: 'C', step: 0.1 },
+        { k: 'bat_vida', l: 'Vida útil del banco', u: 'años' },
+        { k: 'bat_recambio_pct', l: 'Costo del recambio del banco', u: '% del banco', step: 1 },
+      ]
+    },
+    {
+      titulo: 'Emplazamiento e irradiación', colapsable: true, acciones: 'irradiacion', campos: [
+        {
+          k: 'irrad_fuente', l: 'Fuente de irradiación', t: 'select', o: [
+            ['tabla', 'Valor anual cargado a mano'],
+            ['modelo', 'Calculada sobre el plano de los módulos'],
+            ['nasa', 'Serie mensual de NASA POWER + plano'],
+          ]
+        },
+        { k: 'lat', l: 'Latitud', u: '°', step: 0.01 },
+        { k: 'lon', l: 'Longitud', u: '°', step: 0.01 },
+        { k: 'inclinacion', l: 'Inclinación de los módulos', u: '°', step: 1 },
+        { k: 'azimut', l: 'Azimut (0 = Norte, + al Oeste)', u: '°', step: 1 },
+        { k: 'albedo', l: 'Albedo del entorno', u: '', step: 0.05 },
+        {
+          k: 'pr_fuente', l: 'Performance ratio', t: 'select', o: [
+            ['manual', 'Cargado a mano'],
+            ['calculado', 'Calculado desde el desglose de pérdidas'],
+          ]
+        },
       ]
     },
     {
       titulo: 'Tarifa eléctrica', impuestos: true, campos: [
-        { k: 'tarifa_resto', l: 'Tarifa energía (sin impuestos)', u: '$/kWh', step: 0.01 },
+        {
+          k: 'tarifa_tipo', l: 'Estructura tarifaria', t: 'select', o: [
+            ['simple', 'Precio único de la energía'],
+            ['bandas', 'Bandas horarias (pico / valle / resto)'],
+          ]
+        },
+        { k: 'tarifa_resto', l: 'Energía banda resto', u: '$/kWh', step: 0.01 },
+        { k: 'tarifa_pico', l: 'Energía banda pico', u: '$/kWh', step: 0.01 },
+        { k: 'tarifa_valle', l: 'Energía banda valle', u: '$/kWh', step: 0.01 },
+        { k: 'banda_pico_desde', l: 'Pico desde', u: 'h' },
+        { k: 'banda_pico_hasta', l: 'Pico hasta', u: 'h' },
+        { k: 'banda_valle_desde', l: 'Valle desde', u: 'h' },
+        { k: 'banda_valle_hasta', l: 'Valle hasta', u: 'h' },
+        {
+          k: 'iva_condicion', l: 'Condición frente al IVA', t: 'select', o: [
+            ['cf', 'Consumidor final o monotributista (el IVA es costo)'],
+            ['ri', 'Responsable inscripto (el IVA es crédito fiscal)'],
+          ]
+        },
+        { k: 'iva_pct', l: 'Alícuota de IVA', u: '%', step: 0.5 },
+        { k: 'cargo_fijo', l: 'Cargo fijo de la factura', u: '$/mes', step: 1 },
+        { k: 'pot_contratada', l: 'Potencia contratada', u: 'kW', step: 1 },
+        { k: 'cargo_pot', l: 'Cargo por potencia', u: '$/kW/mes', step: 1 },
+        {
+          k: 'reducePotencia', l: 'Renegociar la potencia contratada', t: 'select', o: [
+            ['no', 'No (el solar no baja la potencia facturada)'],
+            ['si', 'Sí, computar el ahorro por menor potencia'],
+          ]
+        },
         { k: 'excModo', l: 'Excedentes', t: 'select', o: [['sin', 'Sin remuneración'], ['iny', 'Inyección a red remunerada']] },
         { k: 'tarifa_iny', l: 'Tarifa de inyección', u: '$/kWh', step: 0.01 },
       ]
     },
     {
+      titulo: 'Presupuesto por ítems (CAPEX)', colapsable: true, acciones: 'bom', campos: [],
+    },
+    {
+      titulo: 'Inversor y cadenas de módulos', colapsable: true, campos: [
+        { k: 'inv_potencia_ac', l: 'Potencia nominal del inversor', u: 'kW', step: 0.1 },
+        { k: 'inv_v_max', l: 'Tensión máxima de entrada', u: 'V CC' },
+        { k: 'inv_v_min', l: 'Tensión mínima de seguimiento', u: 'V CC' },
+        { k: 'inv_v_arranque', l: 'Tensión de arranque', u: 'V CC' },
+        { k: 'inv_mppt', l: 'Cantidad de entradas MPPT', u: 'u.' },
+        { k: 'inv_i_max_mppt', l: 'Corriente máxima por MPPT', u: 'A', step: 0.1 },
+        { k: 'mod_voc', l: 'Módulo: tensión de circuito abierto', u: 'V', step: 0.1 },
+        { k: 'mod_vmp', l: 'Módulo: tensión de máxima potencia', u: 'V', step: 0.1 },
+        { k: 'mod_isc', l: 'Módulo: corriente de cortocircuito', u: 'A', step: 0.01 },
+        { k: 'mod_coef_voc', l: 'Coeficiente térmico de tensión', u: '%/°C', step: 0.01 },
+        { k: 'mod_noct', l: 'Temperatura nominal de celda (NOCT)', u: '°C', step: 0.5 },
+        { k: 'mod_coef_pot', l: 'Coeficiente térmico de potencia', u: '%/°C', step: 0.01 },
+        { k: 'temp_min', l: 'Temperatura mínima de diseño', u: '°C', step: 1 },
+        { k: 'temp_max', l: 'Temperatura máxima de diseño', u: '°C', step: 1 },
+      ]
+    },
+    {
       titulo: 'Parámetros económicos', campos: [
-        { k: 'inflacion', l: 'Aumento anual de tarifa', u: '%/año', step: 0.1 },
+        { k: 'inflacion', l: 'Aumento anual de tarifa (en $)', u: '%/año', step: 0.1 },
+        { k: 'devaluacion', l: 'Devaluación anual esperada', u: '%/año', step: 0.1 },
+        {
+          k: 'moneda_analisis', l: 'Moneda de análisis', t: 'select', o: [
+            ['usd', 'Dólares (U$D) — recomendado'],
+            ['ars', 'Pesos ($) nominales'],
+          ]
+        },
         { k: 'horizonte', l: 'Horizonte de análisis', u: 'años' },
-        { k: 'tasa_desc', l: 'Tasa de descuento', u: '%', step: 0.1 },
+        { k: 'tasa_desc', l: 'Tasa de descuento (moneda de análisis)', u: '%', step: 0.1 },
         { k: 'opex_pct', l: 'OPEX anual', u: '% CAPEX', step: 0.1 },
         { k: 'incluirRecambio', l: 'Recambio de inversor', t: 'select', o: [['no', 'No incluir'], ['si', 'Incluir']] },
         { k: 'recambio_pct', l: 'Costo del recambio', u: '% CAPEX', step: 0.1 },
         { k: 'recambio_cada', l: 'Recambio cada', u: 'años' },
+        {
+          k: 'fiscal', l: 'Tratamiento de Ganancias', t: 'select', o: [
+            ['simetrico', 'Simétrico: grava el ahorro, amortiza la compra y deduce el canon'],
+            ['sin', 'No considerar Ganancias en ninguna opción'],
+            ['legacy', 'Solo escudo del leasing (versión anterior)'],
+          ]
+        },
+        { k: 'amort_anios', l: 'Amortización del equipo en', u: 'años' },
       ]
     },
     {
@@ -134,6 +248,33 @@
         { k: 'l_mtto', l: 'Mantenimiento anual', u: 'U$D/año' },
         { k: 'lGanancias', l: 'Deducible de Ganancias', t: 'select', o: [['si', 'Sí'], ['no', 'No']] },
         { k: 'l_tasa_gan', l: 'Alícuota Ganancias', u: '%', step: 0.1 },
+      ]
+    },
+    {
+      titulo: 'Préstamo bancario', colapsable: true, campos: [
+        { k: 'pr_monto_pct', l: 'Porcentaje financiado', u: '% del CAPEX', step: 1 },
+        {
+          k: 'pr_moneda', l: 'Moneda del préstamo', t: 'select', o: [
+            ['usd', 'Dólares'], ['ars', 'Pesos, tasa fija'], ['uva', 'Pesos ajustable por UVA'],
+          ]
+        },
+        { k: 'pr_tasa', l: 'Tasa nominal anual', u: '%', step: 0.1 },
+        { k: 'pr_plazo', l: 'Plazo', u: 'meses' },
+        {
+          k: 'pr_sistema', l: 'Sistema de amortización', t: 'select', o: [
+            ['frances', 'Francés (cuota constante)'], ['aleman', 'Alemán (amortización constante)'],
+          ]
+        },
+        { k: 'pr_ajuste', l: 'Ajuste anual del capital (UVA)', u: '%/año', step: 0.1 },
+        { k: 'pr_gastos_pct', l: 'Gastos de otorgamiento', u: '% del monto', step: 0.1 },
+      ]
+    },
+    {
+      titulo: 'Contrato PPA', colapsable: true, campos: [
+        { k: 'ppa_tarifa', l: 'Precio de la energía solar', u: 'U$D/kWh', step: 0.001 },
+        { k: 'ppa_plazo', l: 'Plazo del contrato', u: 'años' },
+        { k: 'ppa_ajuste', l: 'Ajuste anual del precio', u: '%/año', step: 0.1 },
+        { k: 'ppa_opcion', l: 'Opción de compra al final', u: 'U$D' },
       ]
     },
   ];
@@ -151,6 +292,13 @@
     monedaLeasing: 'USD',
     modoDim: 'techo',
     asistenteAbierto: false,
+    mes24h: null,          // null = día medio del año; 0-11 = mes concreto
+    chequeos: [],
+    chequeosAbierto: false,
+    membrete: null,
+    seccionesCerradas: {},   // titulo -> false significa abierta
+    riesgo: null,
+    tornado: null,
   };
 
   // =====================================================================
@@ -211,6 +359,9 @@
     if (!p) return;
     cargarEnUI(p);
     renderTodo();
+    UIGestion.cargarRevisiones().then(() => {
+      if (UI.tab === 'pipeline') UIGestion.renderRevisiones();
+    });
   }
 
   function nuevo() {
@@ -271,12 +422,12 @@
 
   async function eliminar() {
     if (!UI.id) return;
-    if (!confirm('¿Eliminar "' + UI.nombre + '"? Esta acción no se puede deshacer.')) return;
+    if (!confirm('Mandar "' + UI.nombre + '" a la papelera.\n\nVas a poder restaurarlo desde la pestaña Pipeline. ¿Seguir?')) return;
     try {
       await DB.proyectos.remove(UI.id);
       UI.id = null; UI.estado = null; UI.dirty = false;
       await cargarTodo(); renderTodo();
-      toast('Proyecto eliminado');
+      toast('Proyecto enviado a la papelera');
     } catch (e) { alert('No se pudo eliminar: ' + e.message); }
   }
 
@@ -331,12 +482,15 @@
     csv += `"VAN ARS";"${fmtN(r.van, 0)}"\n`;
     csv += `"VAN USD";"${fmtN(r.vanUSD, 2)}"\n`;
     csv += `"TIR";"${r.tir ? fmtN(r.tir * 100, 2) + '%' : '—'}"\n`;
-    csv += `"PAYBACK SIMPLE";"${fmtAnios(r.payback)}"\n\n`;
+    csv += `"PAYBACK SIMPLE";"${fmtAnios(r.payback)}"\n`;
+    csv += `"MODELO DE AUTOCONSUMO";"${p.modeloAuto === 'mensual' ? 'Mensual (version anterior)' : 'Horario 12x24'}"\n`;
+    csv += `"COBERTURA DEL CONSUMO";"${fmtPct(r.coberturaPct)}"\n`;
+    csv += `"EXCEDENTE VERTIDO (kWh/año)";"${fmtN(r.excAnual)}"\n\n`;
 
-    csv += `"Año";"Generación (kWh)";"Ahorro ($)";"OPEX ($)";"Recambio ($)";"Flujo Neto ($)";"Acumulado ($)";"Acum. Descontado ($)"\n`;
-    csv += `0;;;;;${-r.capexARS};${-r.capexARS};${-r.capexARS}\n`;
+    csv += `"Año";"Generación (kWh)";"Ahorro ($)";"OPEX ($)";"Recambio inversor ($)";"Recambio baterías ($)";"Flujo Neto ($)";"Acumulado ($)";"Acum. Descontado ($)"\n`;
+    csv += `0;;;;;;${-r.capexARS};${-r.capexARS};${-r.capexARS}\n`;
     r.anios.forEach(a => {
-      csv += `${a.anio};${Math.round(a.gen)};${Math.round(a.ahorro)};${Math.round(a.opex)};${Math.round(a.recambio)};${Math.round(a.flujo)};${Math.round(a.acum)};${Math.round(a.acumDesc)}\n`;
+      csv += `${a.anio};${Math.round(a.gen)};${Math.round(a.ahorro)};${Math.round(a.opex)};${Math.round(a.recambioInv)};${Math.round(a.recambioBat)};${Math.round(a.flujo)};${Math.round(a.acum)};${Math.round(a.acumDesc)}\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -395,21 +549,30 @@
   function renderTabs() {
     $$('.tab').forEach(b => b.classList.toggle('activa', b.dataset.tab === UI.tab));
     $$('.pane').forEach(p => p.classList.toggle('activa', p.id === 'pane-' + UI.tab));
-    if (UI.tab === 'comparador') renderComparador();
+    renderPaneActiva();
   }
 
   // ---------- Formulario de datos ----------
   function renderDatos() {
     const e = UI.estado;
-    const html = SECCIONES.map(sec => `
-      <fieldset class="seccion">
-        <legend>${sec.titulo}</legend>
-        ${sec.cliente ? clienteHTML() : ''}
-        <div class="grid">
-          ${sec.campos.map(c => campoHTML(c, e[c.k])).join('')}
+    const html = SECCIONES.map((sec, i) => {
+      const cerrada = sec.colapsable && UI.seccionesCerradas[sec.titulo] !== false;
+      return `
+      <fieldset class="seccion ${sec.colapsable ? 'seccion-colapsable' : ''} ${cerrada ? 'cerrada' : ''}" data-sec="${i}">
+        <legend ${sec.colapsable ? 'data-toggle-sec="' + i + '" role="button" tabindex="0"' : ''}>
+          ${sec.colapsable ? `<span class="seccion-flecha">${cerrada ? '▶' : '▼'}</span> ` : ''}${sec.titulo}
+        </legend>
+        <div class="seccion-cuerpo" ${cerrada ? 'hidden' : ''}>
+          ${sec.cliente ? clienteHTML() : ''}
+          ${sec.acciones === 'irradiacion' ? accionesIrradiacionHTML() : ''}
+          ${sec.acciones === 'bom' ? UIGestion.bomHTML(e) : ''}
+          <div class="grid">
+            ${sec.campos.map(c => campoHTML(c, e[c.k])).join('')}
+          </div>
+          ${sec.impuestos ? impuestosHTML(e.impData) : ''}
         </div>
-        ${sec.impuestos ? impuestosHTML(e.impData) : ''}
-      </fieldset>`).join('');
+      </fieldset>`;
+    }).join('');
     $('#form-datos').innerHTML = html;
 
     $$('#form-datos [data-k]').forEach(el => {
@@ -417,9 +580,140 @@
       el.addEventListener('change', onCampo);
     });
     $$('#form-datos [data-imp]').forEach(el => el.addEventListener('input', onImpuesto));
+    $$('#form-datos [data-toggle-sec]').forEach(el => {
+      const alternar = () => {
+        const sec = SECCIONES[+el.dataset.toggleSec];
+        UI.seccionesCerradas[sec.titulo] = UI.seccionesCerradas[sec.titulo] === false;
+        renderDatos();
+      };
+      el.onclick = alternar;
+      el.onkeydown = ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); alternar(); } };
+    });
     const sc = $('#selCliente'); if (sc) sc.onchange = onSelCliente;
     const bc = $('#btnGuardarCliente'); if (bc) bc.onclick = guardarCliente;
     const sd = $('#selDistribuidora'); if (sd) sd.onchange = onSelDistribuidora;
+    conectarAccionesIrradiacion();
+    UIGestion.conectarBom();
+    actualizarHintsNum();
+  }
+
+  /**
+   * Cambia un campo del estado desde un módulo externo y refresca la pantalla.
+   * El segundo argumento permite tocar varios campos de una sola vez.
+   */
+  function setCampo(clave, valor, extra) {
+    if (!UI.estado) return;
+    UI.estado[clave] = valor;
+    if (extra) Object.keys(extra).forEach(k => { UI.estado[k] = extra[k]; });
+    marcarDirty();
+    renderDatos();
+    recalcular();
+  }
+
+  /** Carga un estado completo en el formulario, sin guardarlo. */
+  function cargarEstadoExterno(estado) {
+    UI.estado = Object.assign({}, DEFAULT_ESTADO, estado);
+    UI.dirty = true;
+    UI.tab = 'datos';
+    renderTabs();
+    renderDatos();
+    recalcular();
+    renderBarra();
+  }
+
+  // ---------- Irradiación: datos satelitales e inclinación óptima ----------
+  function accionesIrradiacionHTML() {
+    return `<div class="acciones-seccion">
+      <button type="button" class="btn btn-sm btn-primario" id="btnNasa">🛰 Traer irradiación de NASA POWER</button>
+      <button type="button" class="btn btn-sm" id="btnInclinacionOptima">📐 Aplicar inclinación óptima</button>
+      <button type="button" class="btn btn-sm" id="btnAplicarIrrad">⚡ Usar esta irradiación en el proyecto</button>
+      <span class="hint" id="estadoNasa"></span>
+    </div><div id="resumen-irrad">${resumenIrradiacionHTML()}</div>`;
+  }
+
+  function resumenIrradiacionHTML() {
+    const irr = UI.res && UI.res.irradiacion;
+    if (!irr) {
+      return '<p class="hint">Con la fuente en «valor anual cargado a mano» el simulador no calcula la geometría del ' +
+        'emplazamiento. Elegí una de las otras dos opciones para que la irradiación salga de la posición real del sol ' +
+        'sobre tus módulos.</p>';
+    }
+    const ktMedio = irr.kt.reduce((s, x) => s + x, 0) / 12;
+    return `<div class="asistente-resultados">
+      <div class="asistente-kpi"><span class="asistente-kpi-val">${fmtN(irr.anualHorizontal)} kWh/m²</span><span class="asistente-kpi-lbl">Horizontal, año</span></div>
+      <div class="asistente-kpi"><span class="asistente-kpi-val">${fmtN(irr.anualPlano)} kWh/m²</span><span class="asistente-kpi-lbl">Sobre el plano, año</span></div>
+      <div class="asistente-kpi"><span class="asistente-kpi-val">${fmtPct((irr.ganancia - 1) * 100)}</span><span class="asistente-kpi-lbl">Ganancia por inclinación</span></div>
+      <div class="asistente-kpi"><span class="asistente-kpi-val">${fmtN(ktMedio, 2)}</span><span class="asistente-kpi-lbl">Índice de claridad medio</span></div>
+    </div>`;
+  }
+
+  /**
+   * Refresca solo el resumen de irradiación, sin volver a dibujar el formulario:
+   * si se redibujara entero, el campo que el usuario está escribiendo perdería el foco.
+   */
+  function refrescarResumenIrradiacion() {
+    const cont = $('#resumen-irrad');
+    if (cont) cont.innerHTML = resumenIrradiacionHTML();
+  }
+
+  function conectarAccionesIrradiacion() {
+    const bn = $('#btnNasa');
+    if (bn) bn.onclick = traerIrradiacionNasa;
+    const bo = $('#btnInclinacionOptima');
+    if (bo) bo.onclick = aplicarInclinacionOptima;
+    const ba = $('#btnAplicarIrrad');
+    if (ba) ba.onclick = aplicarIrradiacionCalculada;
+  }
+
+  async function traerIrradiacionNasa() {
+    const p = Calc.normalizar(UI.estado);
+    const est = $('#estadoNasa');
+    const btn = $('#btnNasa');
+    if (est) est.textContent = 'Consultando el satélite…';
+    if (btn) btn.disabled = true;
+    try {
+      const d = await Calc.Solar.traerNasaPower(p.lat, p.lon);
+      UI.estado.irrad_mensual_horiz = JSON.stringify(d.diariaHorizontal.map(x => +x.toFixed(4)));
+      UI.estado.temp_mensual = JSON.stringify(d.tempMensual.map(x => +x.toFixed(2)));
+      UI.estado.irrad_fuente = 'nasa';
+      marcarDirty();
+      renderDatos();
+      recalcular();
+      const anual = d.diariaHorizontal.reduce((s, x, m) => s + x * Calc.DIAS_MES[m], 0);
+      toast('Irradiación de NASA POWER cargada: ' + fmtN(anual) + ' kWh/m² horizontales al año');
+    } catch (err) {
+      if (est) est.textContent = 'No se pudo consultar: ' + err.message;
+      alert('No se pudo traer la irradiación satelital.\n\n' + err.message +
+        '\n\nRevisá la conexión. El proyecto sigue funcionando con el modelo geométrico y el valor de tabla.');
+    } finally { if (btn) btn.disabled = false; }
+  }
+
+  function aplicarInclinacionOptima() {
+    const p = Calc.normalizar(UI.estado);
+    const serie = p.irrad_mensual_horiz.some(x => x > 0) ? p.irrad_mensual_horiz : null;
+    const base = { lat: p.lat, lon: p.lon, azimut: p.azimut, albedo: p.albedo, inclinacion: p.inclinacion };
+    if (serie) base.diariaHorizontal = serie; else base.anualHorizontal = p.irrad;
+    const opt = Calc.Solar.inclinacionOptima(base);
+    UI.estado.inclinacion = String(opt.inclinacion);
+    marcarDirty();
+    renderDatos();
+    recalcular();
+    toast('Inclinación óptima ' + opt.inclinacion + '°: ' + fmtPct(opt.perdidaPct) + ' más que con la inclinación anterior');
+  }
+
+  function aplicarIrradiacionCalculada() {
+    const r = UI.res;
+    if (!r || !r.irradiacion) { toast('Elegí primero una fuente de irradiación calculada'); return; }
+    const irr = r.irradiacion;
+    UI.estado.irrad = String(Math.round(irr.anualPlano));
+    // La generación mensual pasa a seguir la forma real del recurso en el sitio
+    const p = Calc.normalizar(UI.estado);
+    UI.estado.genM = JSON.stringify(irr.perfilMensual.map(f => Math.round(p.kwp * irr.anualPlano * (p.pr / 100) * f)));
+    UI.estado.genFuente = 'estimada';
+    marcarDirty();
+    renderDatos();
+    recalcular();
+    toast('Irradiación y generación mensual actualizadas desde el modelo del sitio');
   }
 
   function clienteHTML() {
@@ -462,15 +756,34 @@
 
   function campoHTML(c, v) {
     const id = 'f_' + c.k;
-    let input;
+    let input, extra = '';
     if (c.t === 'select') {
       input = `<select id="${id}" data-k="${c.k}">${c.o.map(([val, lab]) => `<option value="${val}" ${val === v ? 'selected' : ''}>${lab}</option>`).join('')}</select>`;
     } else if (c.t === 'text') {
       input = `<input id="${id}" type="text" data-k="${c.k}" value="${esc(v)}">`;
     } else {
       input = `<div class="con-unidad"><input id="${id}" type="text" inputmode="decimal" data-k="${c.k}" value="${esc(v)}">${c.u ? `<span class="unidad">${c.u}</span>` : ''}</div>`;
+      extra = `<small class="campo-hint" id="h_${c.k}"></small>`;
     }
-    return `<label class="campo" for="${id}"><span class="etiqueta">${c.l}</span>${input}</label>`;
+    return `<label class="campo" for="${id}"><span class="etiqueta">${c.l}</span>${input}${extra}</label>`;
+  }
+
+  /**
+   * Muestra debajo del campo el número que el motor realmente interpretó.
+   * Solo aparece cuando el texto lleva coma o punto, que es donde la lectura puede sorprender
+   * (en es-AR "1.500" son mil quinientos, no uno coma cinco).
+   */
+  function actualizarHintNum(k, crudo) {
+    const el = document.getElementById('h_' + k);
+    if (!el) return;
+    const s = String(crudo === undefined ? (UI.estado ? UI.estado[k] : '') : crudo);
+    if (!/[.,]/.test(s)) { el.textContent = ''; el.classList.remove('visible'); return; }
+    el.textContent = '= ' + Calc.num(s).toLocaleString('es-AR', { maximumFractionDigits: 4 });
+    el.classList.add('visible');
+  }
+
+  function actualizarHintsNum() {
+    SECCIONES.forEach(sec => sec.campos.forEach(c => { if (!c.t) actualizarHintNum(c.k); }));
   }
 
   function impuestosHTML(impData) {
@@ -507,6 +820,7 @@
     const el = ev.target, k = el.dataset.k;
     UI.estado[k] = el.value;
     marcarDirty();
+    actualizarHintNum(k, el.value);
 
     // Si seleccionó una ciudad argentina, actualizar irradiación y ubicación automáticamente
     if (k === 'ciudad_id' && el.value) {
@@ -539,7 +853,7 @@
       $('#nombre').value = el.value; UI.nombre = el.value;
     }
 
-    recalcular();
+    recalcularDiferido();
   }
 
   function onImpuesto(ev) {
@@ -549,7 +863,7 @@
     else imps[i].pct = Calc.num(el.value);
     UI.estado.impData = JSON.stringify(imps);
     marcarDirty();
-    recalcular();
+    recalcularDiferido();
   }
 
   // ---------- Energía mensual & Ambiental ----------
@@ -570,6 +884,14 @@
         'Banco de Baterías',
         fmtN(r.p.bat_kwh, 1) + ' kWh (' + esc(r.p.bat_tipo.toUpperCase()) + ')',
         'Útil: ' + fmtN(r.capUtilBat, 1) + ' kWh · Autonomía: ' + fmtN(r.autonomiaHoras, 1) + ' hs',
+        'bateria'
+      ]);
+      items.push([
+        'Aporte de las baterías',
+        fmtN(r.autoBatAnual) + ' kWh/año',
+        r.p.modeloAuto === 'mensual'
+          ? 'el modelo mensual no simula el ciclado'
+          : fmtARS(r.ahorroBateriaAnual) + '/año de excedente recuperado',
         'bateria'
       ]);
     }
@@ -614,6 +936,7 @@
   function renderEnergiaResumen(r) {
     const p = r.p;
     $('#kpi-energia').innerHTML = kpisEnergia(r);
+    renderAvisoModelo(r);
     const estimada = Calc.estimarGeneracion(p.kwp, p.irrad, p.pr).reduce((s, x) => s + x, 0);
     const desvio = estimada > 0 ? (r.genAnual / estimada - 1) * 100 : 0;
     $('#gen-estimada').textContent = 'Estimación por kWp × irradiación × PR: ' + fmtN(estimada) + ' kWh/año' +
@@ -622,6 +945,25 @@
       { nombre: 'Generación', valores: r.gen, color: 'var(--c-gen)' },
       { nombre: 'Consumo', valores: r.con, color: 'var(--c-con)' },
     ], 'kWh');
+  }
+
+  /** Explica con qué modelo se calculó el autoconsumo y avisa si es el anterior. */
+  function renderAvisoModelo(r) {
+    const el = $('#aviso-modelo');
+    if (!el) return;
+    if (r.p.modeloAuto === 'mensual') {
+      el.className = 'aviso aviso-atencion';
+      el.innerHTML = '<b>Modelo mensual (versión anterior).</b> El autoconsumo se toma como mín(generación, consumo) de cada mes, ' +
+        'lo que supone que toda la energía del mediodía encuentra demanda simultánea y sobreestima el ahorro. ' +
+        'Las baterías suman costo pero no aportan energía. Sirve para reproducir propuestas ya entregadas: ' +
+        'para cotizaciones nuevas usá el modelo horario en la pestaña Datos.';
+    } else {
+      el.className = 'aviso aviso-ok';
+      el.innerHTML = '<b>Modelo horario.</b> El autoconsumo sale de simular los 12 meses hora por hora: posición solar real ' +
+        'según latitud y longitud, curva de demanda ' + esc(r.p.tipoSistema) + ' y despacho del banco de baterías. ' +
+        'Cobertura del consumo <b>' + fmtPct(r.coberturaPct) + '</b> · aprovechamiento de la generación <b>' + fmtPct(r.aprovechamientoPct) + '</b>' +
+        ' · excedente vertido <b>' + fmtN(r.excAnual) + ' kWh/año</b>.';
+    }
   }
 
   function renderEnergiaSinInputs(r) {
@@ -679,7 +1021,15 @@
   function renderChart24h() {
     const cont = $('#chart-24h');
     if (!cont || !UI.estado) return;
-    const p24 = Calc.generarPerfil24h(UI.estado);
+    const p24 = Calc.generarPerfil24h(UI.estado, UI.mes24h);
+    const el24 = $('#hint-24h');
+    if (el24) {
+      const genDia = p24.reduce((s, x) => s + x.gen, 0);
+      const horasSol = p24.filter(x => x.gen > 0.0001);
+      const rango = horasSol.length ? horasSol[0].etiqueta + ' a ' + horasSol[horasSol.length - 1].etiqueta : '—';
+      el24.textContent = fmtN(genDia, 1) + ' kWh generados por día · sol de ' + rango +
+        (UI.mes24h === null ? ' (promedio del año)' : '');
+    }
     const series = [
       { nombre: 'Generación solar', valores: p24.map(x => x.gen), color: 'var(--c-gen)' },
       { nombre: 'Demanda del cliente', valores: p24.map(x => x.con), color: 'var(--c-con)' },
@@ -700,7 +1050,7 @@
     UI.estado[key] = JSON.stringify(a);
     if (fuente) UI.estado.genFuente = fuente;
     marcarDirty();
-    recalcular(true);
+    recalcularEnergiaDiferido();
   }
 
   function estimarGen() {
@@ -744,7 +1094,12 @@
       ['Ahorro año 1', esUSD ? fmtUSD(r.ahorroAnual1USD) : fmtARS(r.ahorroAnual1), (esUSD ? fmtARS(r.ahorroAnual1) : fmtUSD(r.ahorroAnual1USD)) + ' · ' + fmtN(esUSD ? r.ahorroAnual1USD / 12 : r.ahorroAnual1 / 12) + (esUSD ? ' U$D/mes' : ' $/mes')],
       ['Tarifa con impuestos', fmtN(r.tarifaFull, 2) + ' $/kWh', fmtN(p.tarifa_resto, 2) + ' + ' + fmtPct(r.impTotalPct, 2)],
       ['VAN @ ' + fmtN(p.tasa_desc, 1) + ' %', esUSD ? fmtUSD(r.vanUSD) : fmtARS(r.van), esUSD ? fmtARS(r.van) : fmtUSD(r.vanUSD), r.van >= 0 ? 'ok' : 'mal'],
-      ['TIR', r.tir === null ? '—' : fmtPct(r.tir * 100), 'flujo nominal, ' + p.horizonte + ' años', r.tir !== null && r.tir * 100 >= p.tasa_desc ? 'ok' : 'mal'],
+      ['TIR ' + (p.moneda_analisis === 'ars' ? 'en $' : 'en U$D'),
+        (p.moneda_analisis === 'ars' ? r.tir : r.tirUSD) === null ? '—' : fmtPct((p.moneda_analisis === 'ars' ? r.tir : r.tirUSD) * 100),
+        (p.moneda_analisis === 'ars'
+          ? (r.tirUSD === null ? '—' : fmtPct(r.tirUSD * 100) + ' en U$D')
+          : (r.tir === null ? '—' : fmtPct(r.tir * 100) + ' en $ nominales')) + ' · ' + p.horizonte + ' años',
+        (p.moneda_analisis === 'ars' ? r.tir : r.tirUSD) !== null && (p.moneda_analisis === 'ars' ? r.tir : r.tirUSD) * 100 >= p.tasa_desc ? 'ok' : 'mal'],
       ['Payback simple', fmtAnios(r.payback), 'descontado: ' + fmtAnios(r.paybackDesc), r.payback !== null && r.payback <= 6 ? 'ok' : ''],
       ['LCOE', esUSD ? fmtN(r.lcoeUSD * 100, 2) + ' ¢U$D/kWh' : fmtN(r.lcoeARS, 2) + ' $/kWh', esUSD ? fmtN(r.lcoeARS, 2) + ' $/kWh' : fmtN(r.lcoeUSD * 100, 2) + ' ¢U$D/kWh', r.lcoeARS < r.tarifaFull ? 'ok' : 'mal'],
       ['Ahorro acumulado', esUSD ? fmtUSD(r.ahorroTotalUSD) : fmtARS(r.ahorroTotal), (esUSD ? fmtARS(r.ahorroTotal) : fmtUSD(r.ahorroTotalUSD)) + ' en ' + p.horizonte + ' años'],
@@ -1033,13 +1388,30 @@
     const svgBarras = generarSvgBarrasPropuesta(r);
     const svgFlujo = generarSvgFlujoPropuesta(r);
 
+    // Solo se muestran los datos de contacto cargados; los vacíos no dejan rastro en el papel.
+    const contacto = [
+      m.asesor ? 'Asesor: <b>' + esc(m.asesor) + '</b>' : '',
+      m.tel ? 'Tel: ' + esc(m.tel) : '',
+      m.email ? 'Email: ' + esc(m.email) : '',
+    ].filter(Boolean).join(' · ');
+
+    const faltan = faltantesMembrete();
+    const avisoMembrete = faltan.length
+      ? `<div class="propuesta-incompleta">
+           <b>Membrete incompleto.</b> Falta cargar ${esc(faltan.join(', '))}.
+           La propuesta no se puede imprimir hasta completarlo.
+           <button type="button" class="btn btn-sm" id="btnAbrirMembretePropuesta">Completar membrete</button>
+         </div>`
+      : '';
+
     $('#propuesta-imprimible').innerHTML = `
+      ${avisoMembrete}
       <div class="propuesta-header">
         <div class="propuesta-empresa">
           ${logoHtml}
           <h1>${esc(m.nombre)}</h1>
           <p>${esc(m.slogan)}</p>
-          <p style="margin-top: 4px; font-size: 11.5px;">Asesor: <b>${esc(m.asesor)}</b> · Tel: ${esc(m.tel)} · Email: ${esc(m.email)}</p>
+          ${contacto ? `<p style="margin-top: 4px; font-size: 11.5px;">${contacto}</p>` : ''}
         </div>
         <div class="propuesta-doc">
           <div class="doc-titulo">PROPUESTA TÉCNICO-COMERCIAL</div>
@@ -1064,7 +1436,9 @@
           <div class="propuesta-fila"><span class="etq">Módulos solares:</span><span class="val">${fmtN(p.presu_paneles)} paneles × ${fmtN(p.panel_w)} Wp</span></div>
           <div class="propuesta-fila"><span class="etq">Generación estimada año 1:</span><span class="val">${fmtN(r.genAnual)} kWh/año</span></div>
           <div class="propuesta-fila"><span class="etq">Aprovechamiento solar:</span><span class="val">${fmtPct(r.aprovechamientoPct)} (Autoconsumo)</span></div>
+          <div class="propuesta-fila"><span class="etq">Cobertura del consumo:</span><span class="val">${fmtPct(r.coberturaPct)} de la demanda anual</span></div>
           ${p.incluirBateria ? `<div class="propuesta-fila"><span class="etq">Almacenamiento (Baterías):</span><span class="val">${fmtN(p.bat_kwh, 1)} kWh (${esc(p.bat_tipo.toUpperCase())})</span></div>` : ''}
+          ${p.incluirBateria && r.autoBatAnual > 0 ? `<div class="propuesta-fila"><span class="etq">Aporte de las baterías:</span><span class="val">${fmtN(r.autoBatAnual)} kWh/año desplazados al horario sin sol</span></div>` : ''}
         </div>
       </div>
 
@@ -1121,10 +1495,122 @@
         </div>
       </div>
     `;
+
+    const btnMem = $('#btnAbrirMembretePropuesta');
+    if (btnMem) btnMem.onclick = abrirMembrete;
   }
 
-  function kpis(items) {
-    return items.map(([t, v, s, cls]) => `<div class="kpi ${cls || ''}"><div class="kpi-t">${t}</div><div class="kpi-v">${v}</div><div class="kpi-s">${s || ''}</div></div>`).join('');
+  // ---------- Panel de chequeos ----------
+  const ETIQUETA_CAMPO = {};
+  SECCIONES.forEach(sec => sec.campos.forEach(c => { ETIQUETA_CAMPO[c.k] = c.l; }));
+  Object.assign(ETIQUETA_CAMPO, { genM: 'Generación mensual', conM: 'Consumo mensual' });
+
+  function renderChequeos(r) {
+    const cont = $('#panel-chequeos');
+    if (!cont) return [];
+    const items = Calc.validar(UI.estado, r);
+    UI.chequeos = items;
+    const errores = items.filter(x => x.nivel === 'error').length;
+    const avisos = items.length - errores;
+
+    if (!items.length) {
+      cont.className = 'chequeos chequeos-ok';
+      cont.innerHTML = '<div class="chequeos-cabecera"><span class="chequeos-icono">✓</span>' +
+        '<b>Sin observaciones.</b> Los parámetros del proyecto están dentro de los rangos esperados.</div>';
+      return items;
+    }
+
+    const resumen = [
+      errores ? errores + (errores === 1 ? ' error' : ' errores') : '',
+      avisos ? avisos + (avisos === 1 ? ' aviso' : ' avisos') : '',
+    ].filter(Boolean).join(' · ');
+
+    cont.className = 'chequeos ' + (errores ? 'chequeos-error' : 'chequeos-aviso');
+    cont.innerHTML =
+      `<div class="chequeos-cabecera" id="btnToggleChequeos" role="button" tabindex="0">
+         <span class="chequeos-icono">${errores ? '✕' : '!'}</span>
+         <b>Chequeos del proyecto:</b> ${esc(resumen)}
+         <span class="chequeos-flecha">${UI.chequeosAbierto ? '▲' : '▼'}</span>
+       </div>
+       <ul class="chequeos-lista" ${UI.chequeosAbierto ? '' : 'hidden'}>
+         ${items.map(x => `<li class="chequeo chequeo-${x.nivel}" data-campo="${esc(x.campo)}">
+            <span class="chequeo-nivel">${x.nivel === 'error' ? 'Error' : 'Aviso'}</span>
+            <div>
+              <b>${esc(x.titulo)}</b>
+              <div class="chequeo-detalle">${esc(x.detalle)}</div>
+              ${ETIQUETA_CAMPO[x.campo] ? `<button type="button" class="btn btn-sm chequeo-ir">Ir a «${esc(ETIQUETA_CAMPO[x.campo])}»</button>` : ''}
+            </div>
+          </li>`).join('')}
+       </ul>`;
+
+    const cab = $('#btnToggleChequeos');
+    if (cab) {
+      const alternar = () => {
+        UI.chequeosAbierto = !UI.chequeosAbierto;
+        const ul = cont.querySelector('.chequeos-lista');
+        if (ul) ul.hidden = !UI.chequeosAbierto;
+        const fl = cont.querySelector('.chequeos-flecha');
+        if (fl) fl.textContent = UI.chequeosAbierto ? '▲' : '▼';
+      };
+      cab.onclick = alternar;
+      cab.onkeydown = ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); alternar(); } };
+    }
+    cont.querySelectorAll('.chequeo-ir').forEach(btn => {
+      btn.onclick = () => {
+        const campo = btn.closest('.chequeo').dataset.campo;
+        const el = $('#f_' + campo);
+        if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus(); }
+        else { UI.tab = 'energia'; renderTabs(); }
+      };
+    });
+    return items;
+  }
+
+  /** Explica el marco monetario con el que se descontaron los flujos. */
+  function renderAvisoMoneda(r) {
+    const el = $('#aviso-moneda');
+    if (!el) return;
+    const p = r.p;
+    const enUSD = p.moneda_analisis !== 'ars';
+    const partes = [
+      `<b>Análisis en ${enUSD ? 'dólares' : 'pesos nominales'}.</b>`,
+      `Tasa de descuento ${fmtPct(p.tasa_desc, 1)} en ${enUSD ? 'U$D' : '$'}, equivalente a ` +
+      `<b>${fmtPct((enUSD ? r.rArs : r.rUsd) * 100, 1)}</b> en ${enUSD ? '$' : 'U$D'} con una devaluación de ${fmtPct(p.devaluacion, 1)} anual.`,
+    ];
+    if (p.inflacion > 0) {
+      partes.push(`La tarifa sube ${fmtPct(p.inflacion, 1)} por año en pesos, que equivale a ` +
+        `<b>${fmtPct(r.tarifaRealUSDPct, 1)} por año medida en dólares</b>.`);
+    }
+    partes.push(`Tipo de cambio proyectado al año ${p.horizonte}: <b>${fmtARS(r.tcFinal)}</b> por dólar.`);
+    const alerta = p.inflacion > 3 && p.devaluacion === 0;
+    el.className = 'aviso ' + (alerta ? 'aviso-atencion' : 'aviso-ok');
+    if (alerta) {
+      partes.push('Con devaluación cero el ahorro crece en dólares al mismo ritmo que en pesos, lo que sobreestima el retorno. ' +
+        'Cargá la devaluación anual que esperás.');
+    }
+    el.innerHTML = partes.join(' ');
+  }
+
+  /** Explica cómo se trató Ganancias en la comparación leasing vs. compra. */
+  function renderAvisoFiscal(r) {
+    const el = $('#aviso-fiscal');
+    if (!el) return;
+    const p = r.p, L = r.leasing;
+    if (p.fiscal === 'simetrico') {
+      el.className = 'aviso aviso-ok';
+      el.innerHTML = `<b>Comparación simétrica.</b> El ahorro de energía tributa Ganancias a ${fmtPct(p.l_tasa_gan, 1)} en ambas opciones. ` +
+        `La compra amortiza el equipo en ${p.amort_anios} años (escudo total ${fmtUSD(r.escudoTotal / p.tc)}) y el leasing deduce ` +
+        `canon, seguro y mantenimiento (escudo total ${fmtUSD(L.ahorroImp)}).`;
+    } else if (p.fiscal === 'legacy') {
+      el.className = 'aviso aviso-atencion';
+      el.innerHTML = '<b>Comparación asimétrica (versión anterior).</b> El leasing deduce Ganancias pero la compra no amortiza el equipo, ' +
+        'y el ahorro de energía no tributa en ninguna de las dos opciones. Eso favorece artificialmente al leasing. ' +
+        'Sirve para reproducir una cotización ya entregada: para comparar en serio elegí «Simétrico» en la pestaña Datos.';
+    } else {
+      el.className = 'aviso';
+      el.innerHTML = '<b>Sin considerar Ganancias.</b> Ninguna de las dos opciones computa escudo fiscal ni impuesto sobre el ahorro. ' +
+        'Es el criterio correcto para un cliente que no tributa Ganancias (consumidor final o monotributista).';
+    }
   }
 
   // ---------- Recalcular todo ----------
@@ -1132,6 +1618,7 @@
     if (!UI.estado) return;
     const r = Calc.calcular(UI.estado);
     UI.res = r;
+    renderChequeos(r);
     const t = $('#impTotal'); if (t) t.textContent = fmtN(r.impTotalPct, 3) + ' %';
     $('#resumen-cabecera').innerHTML =
       `<span class="resumen-badge">⚡ ${fmtN(r.p.kwp, 2)} kWp</span>` +
@@ -1141,102 +1628,274 @@
       `<span class="resumen-badge">TIR ${r.tir === null ? '—' : fmtPct(r.tir * 100)}</span>` +
       `<span class="resumen-badge">Payback ${fmtAnios(r.payback)}</span>` +
       `<span class="resumen-badge pos">🌱 ${fmtN(r.co2AnualTon, 1)} t CO₂/año</span>` +
-      (r.p.incluirBateria ? `<span class="resumen-badge" style="color:#8b5cf6;">🔋 Batería ${fmtN(r.p.bat_kwh, 1)} kWh</span>` : '');
+      (r.p.incluirBateria ? `<span class="resumen-badge" style="color:#8b5cf6;">🔋 Batería ${fmtN(r.p.bat_kwh, 1)} kWh</span>` : '') +
+      badgeChequeos();
 
-    if (sinInputsEnergia) renderEnergiaSinInputs(r); else renderEnergia(r);
-    renderResultados(r);
-    renderLeasing(r);
-    renderSensibilidad();
-    renderPropuesta(r);
-  }
-
-  // =====================================================================
-  //  Gráficos SVG (sin dependencias)
-  // =====================================================================
-  const NS = 'http://www.w3.org/2000/svg';
-  function svgEl(tag, attrs, text) {
-    const el = document.createElementNS(NS, tag);
-    Object.keys(attrs || {}).forEach(k => el.setAttribute(k, attrs[k]));
-    if (text !== undefined) el.textContent = text;
-    return el;
-  }
-  function niceTicks(min, max, n) {
-    if (min === max) { max = min + 1; }
-    const span = max - min, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
-    const norm = raw / mag;
-    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
-    const t0 = Math.floor(min / step) * step, ticks = [];
-    for (let v = t0; v <= max + step * 0.5; v += step) ticks.push(v);
-    return ticks;
-  }
-  const short = n => Math.abs(n) >= 1e9 ? fmtN(n / 1e9, 1) + ' MM' : Math.abs(n) >= 1e6 ? fmtN(n / 1e6, 1) + ' M' : Math.abs(n) >= 1e3 ? fmtN(n / 1e3, 0) + ' k' : fmtN(n, 0);
-
-  function barChart(cont, labels, series, unidad) {
-    const W = 720, H = 260, ml = 56, mr = 12, mt = 28, mb = 30;
-    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart' });
-    const all = series.flatMap(s => s.valores);
-    const ticks = niceTicks(0, Math.max(1, ...all), 5);
-    const yMax = ticks[ticks.length - 1];
-    const y = v => mt + (H - mt - mb) * (1 - v / yMax);
-    ticks.forEach(t => {
-      svg.appendChild(svgEl('line', { x1: ml, x2: W - mr, y1: y(t), y2: y(t), class: 'grid' }));
-      svg.appendChild(svgEl('text', { x: ml - 6, y: y(t) + 4, class: 'tick', 'text-anchor': 'end' }, short(t)));
-    });
-    const n = labels.length, gw = (W - ml - mr) / n, bw = gw / (series.length + 1);
-    labels.forEach((lab, i) => {
-      series.forEach((s, j) => {
-        const v = s.valores[i] || 0;
-        const r = svgEl('rect', { x: ml + i * gw + bw / 2 + j * bw, y: y(v), width: bw - 2, height: Math.max(0, y(0) - y(v)), fill: s.color, rx: 3 });
-        r.appendChild(svgEl('title', {}, `${lab} · ${s.nombre}: ${fmtN(v)} ${unidad}`));
-        svg.appendChild(r);
-      });
-      svg.appendChild(svgEl('text', { x: ml + i * gw + gw / 2, y: H - 10, class: 'tick', 'text-anchor': 'middle' }, lab));
-    });
-    leyenda(svg, series, W - mr);
-    cont.innerHTML = ''; cont.appendChild(svg);
-  }
-
-  function lineChart(cont, series, unidad, customXLabels) {
-    const W = 720, H = 260, ml = 64, mr = 12, mt = 28, mb = 30;
-    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart' });
-    const all = series.flatMap(s => s.valores);
-    const ticks = niceTicks(Math.min(0, ...all), Math.max(0, ...all), 5);
-    const yMin = ticks[0], yMax = ticks[ticks.length - 1];
-    const n = series[0].valores.length;
-    const x = i => ml + (W - ml - mr) * (i / Math.max(1, n - 1));
-    const y = v => mt + (H - mt - mb) * (1 - (v - yMin) / (yMax - yMin));
-    ticks.forEach(t => {
-      svg.appendChild(svgEl('line', { x1: ml, x2: W - mr, y1: y(t), y2: y(t), class: t === 0 ? 'cero' : 'grid' }));
-      svg.appendChild(svgEl('text', { x: ml - 6, y: y(t) + 4, class: 'tick', 'text-anchor': 'end' }, short(t)));
-    });
-    const paso = n > 20 ? 4 : n > 12 ? 2 : 1;
-    for (let i = 0; i < n; i += paso) {
-      const labelText = customXLabels ? customXLabels[i] : i;
-      svg.appendChild(svgEl('text', { x: x(i), y: H - 10, class: 'tick', 'text-anchor': 'middle' }, labelText));
+    const bch = $('#badgeChequeos');
+    if (bch) {
+      bch.style.cursor = 'pointer';
+      bch.onclick = () => {
+        UI.tab = 'datos'; UI.chequeosAbierto = true;
+        renderTabs(); renderChequeos(UI.res);
+        const panel = $('#panel-chequeos');
+        if (panel) panel.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      };
     }
-    series.forEach(s => {
-      const d = s.valores.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ');
-      svg.appendChild(svgEl('path', { d, fill: 'none', stroke: s.color, 'stroke-width': 2.5, 'stroke-linejoin': 'round' }));
-      s.valores.forEach((v, i) => {
-        const c = svgEl('circle', { cx: x(i), cy: y(v), r: 3.5, fill: s.color });
-        const xLab = customXLabels ? customXLabels[i] : `Año ${i}`;
-        c.appendChild(svgEl('title', {}, `${xLab} · ${s.nombre}: ${fmtN(v, 2)} ${unidad}`));
-        svg.appendChild(c);
-      });
-    });
-    leyenda(svg, series, W - mr);
-    cont.innerHTML = ''; cont.appendChild(svg);
+
+    renderPaneActiva(sinInputsEnergia);
   }
 
-  function leyenda(svg, series, xRight) {
-    let x = xRight;
-    series.slice().reverse().forEach(s => {
-      const w = s.nombre.length * 6.5 + 22;
-      x -= w;
-      svg.appendChild(svgEl('rect', { x, y: 6, width: 10, height: 10, fill: s.color, rx: 2 }));
-      svg.appendChild(svgEl('text', { x: x + 14, y: 15, class: 'tick' }, s.nombre));
-      x -= 10;
-    });
+  /**
+   * Dibuja solo la pestaña que el usuario está mirando.
+   * Antes se redibujaban las siete en cada tecla, y con la simulación horaria,
+   * el Monte Carlo y el comparador de financiamiento eso ya no se sostiene.
+   */
+  function renderPaneActiva(sinInputsEnergia) {
+    const r = UI.res;
+    if (!r) return;
+    switch (UI.tab) {
+      case 'techo3d':
+        if (typeof UITecho3D !== 'undefined') {
+          UITecho3D.init();
+        }
+        break;
+      case 'energia':
+        if (sinInputsEnergia) renderEnergiaSinInputs(r); else renderEnergia(r);
+        UIAnalisis.renderBandas(r);
+        UIAnalisis.renderInversor(r);
+        break;
+      case 'resultados':
+        renderResultados(r);
+        renderAvisoMoneda(r);
+        break;
+      case 'financiamiento':
+        renderLeasing(r);
+        renderAvisoFiscal(r);
+        UIAnalisis.renderFinanciamiento(r);
+        break;
+      case 'riesgo':
+        renderSensibilidad();
+        UIAnalisis.renderRiesgo(UI.riesgo, r);
+        UIAnalisis.renderTornado(UI.tornado);
+        marcarRiesgoDesactualizado();
+        break;
+      case 'comparador':
+        renderComparador();
+        break;
+      case 'pipeline':
+        UIGestion.renderPipeline();
+        break;
+      case 'tablero':
+        UIGestion.renderTablero();
+        break;
+      case 'propuesta':
+        renderPropuesta(r);
+        break;
+      case 'datos':
+        // El formulario no se redibuja para no perder el foco; solo se actualizan
+        // los bloques que dependen del cálculo.
+        refrescarResumenIrradiacion();
+        UIGestion.refrescarTotales(UI.estado);
+        break;
+      default:
+        break;
+    }
+  }
+
+  // Espacia el recálculo para que escribir en un campo no dispare el motor en cada tecla
+  const recalcularDiferido = UI0.debounce(() => recalcular(), 160);
+  const recalcularEnergiaDiferido = UI0.debounce(() => recalcular(true), 160);
+
+  /**
+   * Antes de imprimir revisa que el membrete tenga datos reales y que no queden
+   * errores de carga sin resolver. Los avisos no bloquean, los errores piden confirmación.
+   */
+  function imprimirPropuesta() {
+    const faltan = faltantesMembrete();
+    if (faltan.length) {
+      alert('La propuesta no puede salir con el membrete incompleto.\n\nFalta cargar: ' + faltan.join(', ') + '.');
+      abrirMembrete();
+      return;
+    }
+    const errores = (UI.chequeos || []).filter(x => x.nivel === 'error');
+    if (errores.length) {
+      const lista = errores.map(x => '  · ' + x.titulo).join('\n');
+      if (!confirm('El proyecto tiene ' + errores.length + (errores.length === 1 ? ' error' : ' errores') +
+        ' sin resolver:\n\n' + lista + '\n\n¿Imprimir igual?')) {
+        UI.tab = 'datos'; UI.chequeosAbierto = true; renderTabs(); renderChequeos(UI.res);
+        return;
+      }
+    }
+    window.print();
+  }
+
+  // ---------- Análisis de riesgo (se corre a pedido, no en cada tecla) ----------
+  function correrRiesgo() {
+    if (!UI.estado) return;
+    const btn = $('#btnCorrerRiesgo');
+    const est = $('#estadoRiesgo');
+    const n = +($('#selRiesgoN') || { value: 1000 }).value || 1000;
+    if (btn) btn.disabled = true;
+    if (est) est.textContent = 'Sorteando ' + fmtN(n) + ' escenarios…';
+
+    // Se cede el hilo para que el navegador alcance a pintar el estado antes de bloquear
+    setTimeout(() => {
+      try {
+        const t0 = Date.now();
+        UI.riesgo = Calc.analisisMontecarlo(UI.estado, { n });
+        UI.tornado = Calc.analisisTornado(UI.estado);
+        UI.riesgoFirma = JSON.stringify(UI.estado);
+        UIAnalisis.renderRiesgo(UI.riesgo, UI.res);
+        UIAnalisis.renderTornado(UI.tornado);
+        const ms = Date.now() - t0;
+        const tiempo = ms < 1000 ? fmtN(ms) + ' ms' : fmtN(ms / 1000, 1) + ' s';
+        if (est) est.textContent = fmtN(n) + ' escenarios en ' + tiempo +
+          ' · semilla ' + UI.riesgo.semilla + ' (resultado reproducible)';
+      } catch (e) {
+        if (est) est.textContent = 'No se pudo correr la simulación: ' + e.message;
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }, 30);
+  }
+
+  /** Avisa si el proyecto cambió después de la última simulación. */
+  function marcarRiesgoDesactualizado() {
+    const est = $('#estadoRiesgo');
+    if (!est || !UI.riesgo) return;
+    if (UI.riesgoFirma && UI.riesgoFirma !== JSON.stringify(UI.estado)) {
+      est.textContent = 'El proyecto cambió después de esta simulación. Volvé a correrla para actualizarla.';
+      est.className = 'hint hint-bloqueado';
+    } else {
+      est.className = 'hint';
+    }
+  }
+
+  // =====================================================================
+  //  Compartir y exportar la propuesta
+  // =====================================================================
+
+  /** Resumen de una línea por concepto, para mandar por mensaje. */
+  function resumenTexto() {
+    const r = UI.res;
+    if (!r) return '';
+    const m = getMembrete();
+    const p = r.p;
+    const lineas = [
+      `*${m.nombre}* · Propuesta solar fotovoltaica`,
+      p.cliente_nombre ? `Cliente: ${p.cliente_nombre}` : '',
+      p.presu_numero ? `Cotización N° ${p.presu_numero}` : '',
+      '',
+      `☀️ Potencia: ${fmtN(p.kwp, 2)} kWp (${fmtN(p.presu_paneles)} módulos de ${fmtN(p.panel_w)} Wp)`,
+      `⚡ Generación estimada: ${fmtN(r.genAnual)} kWh al año`,
+      `🔌 Cubre el ${fmtPct(r.coberturaPct)} del consumo`,
+      `💵 Inversión: ${fmtUSD(r.capexUSD)}`,
+      `📉 Ahorro año 1: ${fmtARS(r.ahorroAnual1)}`,
+      `📈 Retorno simple: ${fmtAnios(r.payback)}${r.tirUSD !== null ? ' · TIR ' + fmtPct(r.tirUSD * 100) : ''}`,
+      `🌱 Evita ${fmtN(r.co2AnualTon, 1)} toneladas de CO₂ por año`,
+      '',
+      `Validez de la oferta: ${m.validez} días.`,
+      m.asesor ? `${m.asesor}${m.tel ? ' · ' + m.tel : ''}` : (m.tel || ''),
+    ];
+    return lineas.filter(x => x !== '').join('\n');
+  }
+
+  function compartirWhatsapp() {
+    const faltan = faltantesMembrete();
+    if (faltan.length) { alert('Completá el membrete antes de compartir.\n\nFalta: ' + faltan.join(', ') + '.'); abrirMembrete(); return; }
+    window.open('https://wa.me/?text=' + encodeURIComponent(resumenTexto()), '_blank', 'noopener');
+  }
+
+  function compartirEmail() {
+    const faltan = faltantesMembrete();
+    if (faltan.length) { alert('Completá el membrete antes de compartir.\n\nFalta: ' + faltan.join(', ') + '.'); abrirMembrete(); return; }
+    const r = UI.res;
+    const asunto = 'Propuesta solar fotovoltaica' + (r && r.p.presu_numero ? ' N° ' + r.p.presu_numero : '') +
+      (r && r.p.cliente_nombre ? ' · ' + r.p.cliente_nombre : '');
+    // El cuerpo va sin asteriscos: el formato de WhatsApp no aplica en el correo
+    const cuerpo = resumenTexto().replace(/\*/g, '');
+    location.href = 'mailto:?subject=' + encodeURIComponent(asunto) + '&body=' + encodeURIComponent(cuerpo);
+  }
+
+  /**
+   * Descarga la propuesta como un archivo HTML autónomo: se abre en cualquier
+   * navegador sin la app, conserva los gráficos vectoriales e imprime en PDF.
+   * No depende de ninguna librería externa.
+   */
+  function descargarPropuestaHTML() {
+    if (!UI.res) { toast('Abrí un proyecto antes de exportar'); return; }
+    const faltan = faltantesMembrete();
+    if (faltan.length) { alert('La propuesta no puede salir con el membrete incompleto.\n\nFalta: ' + faltan.join(', ') + '.'); abrirMembrete(); return; }
+
+    const nodo = $('#propuesta-imprimible').cloneNode(true);
+    const aviso = nodo.querySelector('.propuesta-incompleta');
+    if (aviso) aviso.remove();
+
+    const m = getMembrete();
+    const titulo = (UI.nombre || 'Propuesta') + ' · ' + m.nombre;
+    const html = `<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(titulo)}</title>
+<style>
+  :root { --primario:#2563eb; --texto:#0f172a; --texto-2:#64748b; --borde:#e2e8f0; --ok:#10b981; --mal:#ef4444; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:26px; background:#f1f5f9; color:var(--texto);
+         font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif; font-size:13px; line-height:1.5; }
+  .propuesta-card { max-width:860px; margin:0 auto; background:#fff; padding:34px 38px;
+                    border-radius:10px; box-shadow:0 8px 26px rgba(15,23,42,.10); }
+  .propuesta-header { display:flex; justify-content:space-between; align-items:flex-start; gap:22px;
+                      border-bottom:2px solid var(--primario); padding-bottom:14px; margin-bottom:20px; }
+  .propuesta-logo { max-height:52px; width:auto; display:block; margin-bottom:8px; }
+  .propuesta-empresa h1 { font-size:19px; margin:0 0 2px; color:var(--primario); }
+  .propuesta-empresa p { margin:0; font-size:12px; color:var(--texto-2); }
+  .propuesta-doc { text-align:right; }
+  .doc-titulo { font-size:13.5px; font-weight:700; letter-spacing:.02em; }
+  .doc-num { color:var(--primario); font-weight:700; font-size:13px; }
+  .doc-fecha { font-size:11.5px; color:var(--texto-2); }
+  .propuesta-grid, .propuesta-charts-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px; }
+  .propuesta-bloque, .propuesta-chart-box { border:1px solid var(--borde); border-radius:8px; padding:12px 14px; background:#f8fafc; }
+  .propuesta-bloque h4, .propuesta-chart-box h5 { margin:0 0 8px; font-size:12.5px; color:var(--primario); }
+  .propuesta-fila { display:flex; justify-content:space-between; gap:12px; padding:3px 0; font-size:12.5px; border-bottom:1px dotted var(--borde); }
+  .propuesta-fila:last-child { border-bottom:none; }
+  .etq { color:var(--texto-2); }
+  .val { font-weight:600; text-align:right; }
+  .pos { color:var(--ok); } .neg { color:var(--mal); }
+  .propuesta-insignia { display:flex; gap:14px; align-items:center; border:1px solid var(--ok);
+                        background:#ecfdf5; border-radius:8px; padding:12px 16px; margin-bottom:20px; }
+  .propuesta-insignia-icon { font-size:26px; }
+  .propuesta-insignia-texto strong { display:block; color:#047857; font-size:13px; margin-bottom:2px; }
+  .propuesta-insignia-texto span { font-size:12px; color:var(--texto-2); }
+  .propuesta-firmas { display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-top:40px; }
+  .linea-firma { border-top:1px solid var(--texto); padding-top:6px; text-align:center; font-size:12px; }
+  svg { max-width:100%; height:auto; }
+  @media print {
+    body { background:#fff; padding:0; }
+    .propuesta-card { box-shadow:none; border-radius:0; padding:0; max-width:100%; }
+    .propuesta-bloque, .propuesta-chart-box, .propuesta-insignia, .propuesta-firmas { page-break-inside:avoid; }
+  }
+</style>
+</head><body>
+<div class="propuesta-card">${nodo.innerHTML}</div>
+</body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (UI.nombre || 'propuesta').replace(/[^\w\-]+/g, '_') + '_propuesta.html';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    toast('Propuesta exportada como archivo HTML autónomo');
+  }
+
+  /** Insignia de chequeos en la barra de resumen; lleva a la pestaña Datos al hacer clic. */
+  function badgeChequeos() {
+    const items = UI.chequeos || [];
+    if (!items.length) return '<span class="resumen-badge pos" title="Sin observaciones">✓ Chequeos OK</span>';
+    const errores = items.filter(x => x.nivel === 'error').length;
+    const texto = errores ? errores + (errores === 1 ? ' error' : ' errores') : items.length + (items.length === 1 ? ' aviso' : ' avisos');
+    return `<span class="resumen-badge ${errores ? 'neg' : 'atencion'}" id="badgeChequeos" title="Ver el detalle en la pestaña Datos">${errores ? '✕' : '!'} ${texto}</span>`;
   }
 
   // =====================================================================
@@ -1254,6 +1913,18 @@
     $('#cfgEmpresaValidez').value = m.validez;
     logoBase64Temp = m.logo || '';
     renderLogoPreview();
+
+    // En modo nube el membrete es único para el equipo y solo lo edita un administrador.
+    const puede = DB.puedeEditarEmpresa();
+    $('#formMembrete').querySelectorAll('input, button[type="submit"]').forEach(el => { el.disabled = !puede; });
+    const nota = $('#membreteAlcance');
+    if (nota) {
+      nota.textContent = DB.modo === 'nube'
+        ? (puede ? 'Se guarda en la nube y lo ven todos los usuarios del equipo.'
+                 : 'Solo un administrador puede modificar el membrete del equipo.')
+        : 'Se guarda en este navegador.';
+      nota.className = 'hint' + (DB.modo === 'nube' && !puede ? ' hint-bloqueado' : '');
+    }
     $('#modalMembrete').hidden = false;
   }
   function cerrarMembrete() { $('#modalMembrete').hidden = true; }
@@ -1270,8 +1941,16 @@
     }
   }
 
-  function guardarMembrete(ev) {
+  const LOGO_MAX_BYTES = 400 * 1024;
+
+  async function guardarMembrete(ev) {
     ev.preventDefault();
+    if (!DB.puedeEditarEmpresa()) { toast('Solo un administrador puede cambiar el membrete'); return; }
+    if (logoBase64Temp && logoBase64Temp.length > LOGO_MAX_BYTES) {
+      alert('El logo pesa ' + Math.round(logoBase64Temp.length / 1024) + ' KB y el máximo son ' +
+        Math.round(LOGO_MAX_BYTES / 1024) + ' KB.\n\nGuardalo en PNG optimizado o reducí sus dimensiones.');
+      return;
+    }
     const m = {
       nombre: $('#cfgEmpresaNombre').value.trim(),
       slogan: $('#cfgEmpresaSlogan').value.trim(),
@@ -1281,10 +1960,16 @@
       validez: $('#cfgEmpresaValidez').value.trim() || '15',
       logo: logoBase64Temp || '',
     };
-    setMembrete(m);
-    cerrarMembrete();
-    if (UI.res) renderPropuesta(UI.res);
-    toast('Membrete y logo guardados');
+    const btn = $('#formMembrete').querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    try {
+      UI.membrete = await DB.empresa.save(m);
+      cerrarMembrete();
+      if (UI.res) renderPropuesta(UI.res);
+      toast(DB.modo === 'nube' ? 'Membrete guardado para todo el equipo' : 'Membrete y logo guardados');
+    } catch (e) {
+      alert('No se pudo guardar el membrete: ' + e.message);
+    } finally { if (btn) btn.disabled = false; }
   }
 
   // =====================================================================
@@ -1339,18 +2024,10 @@
     renderUsuario();
     if (DB.modo === 'nube' && !u) { mostrarLogin(true); UI.proyectos = []; UI.estado = null; UI.id = null; renderTodo(); return; }
     mostrarLogin(false);
+    await cargarMembrete();
     await cargarTodo();
     if (UI.proyectos.length) await abrir(UI.proyectos[0].id);
     else { UI.estado = null; UI.id = null; renderTodo(); }
-  }
-
-  // =====================================================================
-  //  Toast
-  // =====================================================================
-  let toastT;
-  function toast(msg) {
-    const el = $('#toast'); el.textContent = msg; el.classList.add('ver');
-    clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('ver'), 2600);
   }
 
   // =====================================================================
@@ -1502,7 +2179,7 @@
     $('#btnMonedaLeasingUSD').onclick = () => setMonedaLeasing('USD');
     $('#btnMonedaLeasingARS').onclick = () => setMonedaLeasing('ARS');
     $('#btnVerPropuesta').onclick = () => { UI.tab = 'propuesta'; renderTabs(); };
-    $('#btnImprimirPropuesta').onclick = () => window.print();
+    $('#btnImprimirPropuesta').onclick = imprimirPropuesta;
     $('#btnImportar').onclick = () => $('#fileImport').click();
     $('#btnMigrar').onclick = migrar;
     $('#btnConfigMembrete').onclick = abrirMembrete;
@@ -1521,6 +2198,34 @@
     $('#fileImport').onchange = ev => { if (ev.target.files[0]) importar(ev.target.files[0]); ev.target.value = ''; };
     $('#btnEstimarGen').onclick = estimarGen;
     $('#btnRellenarCon').onclick = rellenarConsumo;
+    const bRiesgo = $('#btnCorrerRiesgo'); if (bRiesgo) bRiesgo.onclick = correrRiesgo;
+    const bPap = $('#btnVerPapelera'); if (bPap) bPap.onclick = UIGestion.abrirPapelera;
+    const bCerrarPap = $('#btnCerrarPapelera'); if (bCerrarPap) bCerrarPap.onclick = UIGestion.cerrarPapelera;
+    const bRev = $('#btnCongelarRevision'); if (bRev) bRev.onclick = UIGestion.congelarRevision;
+    const bWa = $('#btnCompartirWhatsapp'); if (bWa) bWa.onclick = compartirWhatsapp;
+    const bMail = $('#btnCompartirEmail'); if (bMail) bMail.onclick = compartirEmail;
+    const bHtml = $('#btnDescargarHtml'); if (bHtml) bHtml.onclick = descargarPropuestaHTML;
+
+    // El módulo de gestión necesita leer el estado de la app y pedirle acciones
+    UIGestion.init({
+      UI,
+      abrir: id => { UI.tab = 'datos'; abrir(id); },
+      cargarTodo,
+      setCampo,
+      cargarEstado: cargarEstadoExterno,
+      membrete: getMembrete,
+    });
+
+    const selMes = $('#selMes24h');
+    if (selMes) {
+      selMes.innerHTML = '<option value="">Día medio del año</option>' +
+        Calc.MESES.map((m, i) => `<option value="${i}">${m}</option>`).join('');
+      selMes.onchange = ev => {
+        UI.mes24h = ev.target.value === '' ? null : +ev.target.value;
+        renderChart24h();
+      };
+    }
+
     $('#buscar').oninput = ev => { UI.filtro = ev.target.value; renderLista(); };
     $('#nombre').oninput = ev => { UI.nombre = ev.target.value; marcarDirty(); };
     $$('.tab').forEach(b => b.onclick = () => { UI.tab = b.dataset.tab; renderTabs(); });
@@ -1534,6 +2239,7 @@
         DB.usarModoLocal();
         mostrarLogin(false);
         renderUsuario();
+        await cargarMembrete();
         await cargarTodo();
         if (UI.proyectos.length) await abrir(UI.proyectos[0].id);
         else {
@@ -1551,8 +2257,10 @@
     window.addEventListener('beforeunload', ev => { if (UI.dirty) { ev.preventDefault(); ev.returnValue = ''; } });
 
     const h = location.hash.replace('#', '');
-    if (['datos', 'energia', 'resultados', 'leasing', 'sensibilidad', 'comparador', 'propuesta'].includes(h)) UI.tab = h;
+    if (['datos', 'techo3d', 'energia', 'resultados', 'financiamiento', 'riesgo',
+      'comparador', 'pipeline', 'tablero', 'propuesta'].includes(h)) UI.tab = h;
 
+    await UIGestion.cargarCatalogo();
     await DB.init(window.APP_CONFIG);
     renderLoginModo();
     DB.onAuth(alCambiarUsuario);

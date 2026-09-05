@@ -6,6 +6,7 @@
   <title>ALP GROUP · Simulador FV · Análisis Técnico-Económico</title>
   <link rel="icon" type="image/svg+xml" href="img/icon.svg">
   <link rel="icon" type="image/png" href="img/logo.png">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -75,12 +76,15 @@
 
         <nav class="tabs">
           <button class="tab activa" data-tab="datos">📋 Datos</button>
+          <button class="tab" data-tab="techo3d">🛰️ Techo & 3D</button>
           <button class="tab" data-tab="energia">⚡ Energía y CO₂</button>
           <button class="tab" data-tab="resultados">📈 Resultados</button>
-          <button class="tab" data-tab="leasing">🏦 Leasing vs Contado</button>
-          <button class="tab" data-tab="sensibilidad">🎯 Sensibilidad</button>
+          <button class="tab" data-tab="financiamiento">🏦 Financiamiento</button>
+          <button class="tab" data-tab="riesgo">🎯 Riesgo</button>
           <button class="tab" data-tab="comparador">⚖️ Comparar</button>
-          <button class="tab" data-tab="propuesta">📄 Propuesta Comercial</button>
+          <button class="tab" data-tab="pipeline">📌 Pipeline</button>
+          <button class="tab" data-tab="tablero">📊 Tablero</button>
+          <button class="tab" data-tab="propuesta">📄 Propuesta</button>
         </nav>
 
         <!-- Pestaña 1: Datos -->
@@ -135,8 +139,12 @@
             </div>
           </div>
 
+          <div id="panel-chequeos" class="chequeos"></div>
           <div id="form-datos"></div>
         </section>
+
+        <!-- Pestaña Satelital 3D & Techo IA (Express 90s) -->
+        <section id="pane-techo3d" class="pane"></section>
 
         <!-- Pestaña 2: Energía -->
         <section id="pane-energia" class="pane">
@@ -146,14 +154,26 @@
             <button class="btn btn-sm" id="btnRellenarCon">Rellenar consumo constante</button>
             <span class="hint" id="gen-estimada"></span>
           </div>
+          <div id="aviso-modelo" class="aviso"></div>
           <div class="kpis" id="kpi-energia"></div>
           <div id="chart-energia" class="chart-cont"></div>
           <div class="scroll"><table class="tabla" id="tabla-energia"></table></div>
-          <p class="hint">"Est." marca los meses cuyo consumo es estimado (sin factura). Autoconsumo = mín(generación, consumo) mensual.</p>
+          <p class="hint">"Est." marca los meses cuyo consumo es estimado (sin factura). El autoconsumo de cada mes surge del despacho hora por hora, no de la simple comparación de totales mensuales.</p>
 
           <h2 style="margin-top: 24px;">⏱ Curva diaria horaria (24 horas)</h2>
-          <p class="hint">Simulación de la curva de campana solar frente al perfil típico de demanda y gestión de almacenamiento con batería.</p>
+          <p class="hint">Campana solar calculada con la posición del sol en el emplazamiento, frente al perfil de demanda del cliente y al ciclado del banco de baterías.</p>
+          <div class="fila-acciones">
+            <label class="campo campo-inline"><span class="etiqueta">Día a visualizar</span>
+              <select id="selMes24h"><option value="">Día medio del año</option></select></label>
+            <span class="hint" id="hint-24h"></span>
+          </div>
           <div id="chart-24h" class="chart-cont"></div>
+
+          <h2 style="margin-top: 24px;">🕐 Energía por banda horaria</h2>
+          <div id="cont-bandas"></div>
+
+          <h2 style="margin-top: 24px;">🔌 Inversor y cadenas de módulos</h2>
+          <div id="cont-inversor"></div>
 
           <h2 style="margin-top: 24px;">🔬 Diagrama de Eficiencia y Desglose de Pérdidas Técnicas</h2>
           <p class="hint">Factores físicos y eléctricos que determinan el Performance Ratio (PR) real del sistema.</p>
@@ -172,23 +192,30 @@
               <button class="btn btn-sm" id="btnExportarCSV" title="Descargar flujo de caja completo para Excel">📥 Descargar Flujo en Excel (CSV)</button>
             </div>
           </div>
+          <div id="aviso-moneda" class="aviso"></div>
           <div class="kpis" id="kpi-resultados"></div>
           <h3>Flujo de caja acumulado (<span class="moneda-label">ARS</span>)</h3>
           <div id="chart-flujo" class="chart-cont"></div>
           <h3>Detalle anual del proyecto</h3>
           <div class="scroll"><table class="tabla" id="tabla-flujo"></table></div>
-          <p class="hint">Ahorro = autoconsumo × tarifa con impuestos + excedente × tarifa de inyección. Se aplica degradación anual a la generación y aumento anual a la tarifa y al OPEX.</p>
+          <p class="hint">Ahorro = autoconsumo × tarifa con impuestos + excedente × tarifa de inyección. Se aplica degradación anual a la generación y aumento anual a la tarifa y al OPEX. La columna Recambio suma el del inversor y el del banco de baterías cuando corresponde.</p>
         </section>
 
-        <!-- Pestaña 4: Leasing -->
-        <section id="pane-leasing" class="pane">
-          <div class="fila-acciones" style="justify-content: space-between;">
-            <h2>🏦 Leasing vs. compra al contado</h2>
+        <!-- Pestaña 4: Financiamiento -->
+        <section id="pane-financiamiento" class="pane">
+          <h2>🏦 Comparador de alternativas de financiamiento</h2>
+          <p class="hint">Las cuatro opciones se expresan en dólares, con el ahorro convertido al tipo de cambio proyectado de cada año y descontadas a la misma tasa. Cargá el préstamo y el PPA en la pestaña Datos para que aparezcan.</p>
+          <div class="scroll" id="cont-financiamiento"></div>
+          <div id="detalle-prestamo"></div>
+
+          <div class="fila-acciones" style="justify-content: space-between; margin-top: 26px;">
+            <h2>Detalle del leasing</h2>
             <div class="toggle-moneda">
               <button class="btn btn-sm btn-primario" id="btnMonedaLeasingUSD">USD (U$D)</button>
               <button class="btn btn-sm" id="btnMonedaLeasingARS">ARS ($)</button>
             </div>
           </div>
+          <div id="aviso-fiscal" class="aviso"></div>
           <div class="kpis" id="kpi-leasing"></div>
           <div class="dos-col">
             <div>
@@ -205,11 +232,31 @@
           <p class="hint">Durante el plazo el cliente paga canon + seguro + mantenimiento; al final paga la opción de compra. Si es deducible de Ganancias, se descuenta la alícuota sobre esos pagos.</p>
         </section>
 
-        <!-- Pestaña 5: Sensibilidad -->
-        <section id="pane-sensibilidad" class="pane">
-          <h2>🎯 Análisis de Sensibilidad y Riesgo</h2>
+        <!-- Pestaña 5: Riesgo -->
+        <section id="pane-riesgo" class="pane">
+          <h2>🎲 Simulación de Monte Carlo</h2>
+          <p class="hint">Sortea miles de escenarios moviendo a la vez el recurso solar, la tarifa, el costo del sistema, la actualización tarifaria y la devaluación. Devuelve la distribución completa del VAN, no un solo número.</p>
+          <div class="fila-acciones">
+            <button class="btn btn-primario btn-sm" id="btnCorrerRiesgo">▶ Correr simulación</button>
+            <label class="campo campo-inline"><span class="etiqueta">Escenarios</span>
+              <select id="selRiesgoN">
+                <option value="400">400 (rápido)</option>
+                <option value="1000" selected>1.000</option>
+                <option value="4000">4.000 (preciso)</option>
+              </select></label>
+            <span class="hint" id="estadoRiesgo">Todavía no se corrió. La semilla es fija: el resultado es reproducible.</span>
+          </div>
+          <div class="kpis" id="kpi-riesgo"></div>
+          <div id="chart-riesgo" class="chart-cont"></div>
+
+          <h2 style="margin-top: 26px;">🌪 Qué variable mueve más el resultado</h2>
+          <p class="hint">Cada barra mueve una sola variable un desvío y medio hacia arriba y hacia abajo, dejando el resto en su valor base. La más larga es la que hay que negociar primero.</p>
+          <div id="chart-tornado" class="chart-cont"></div>
+          <div class="scroll" id="tabla-tornado"></div>
+
+          <h2 style="margin-top: 26px;">🎯 Matrices de sensibilidad</h2>
           <p class="hint">Evaluación del impacto de variaciones en la tarifa eléctrica, el costo de inversión (CAPEX) y la inflación energética en el VAN y TIR del proyecto.</p>
-          
+
           <div class="dos-col">
             <div class="matriz-cont">
               <h3>Matriz 1: Variación de Tarifa vs. CAPEX (VAN en U$D)</h3>
@@ -232,11 +279,60 @@
           <div class="scroll" id="cont-comparador-tabla"></div>
         </section>
 
+        <!-- Pestaña 7: Pipeline comercial -->
+        <section id="pane-pipeline" class="pane">
+          <div class="fila-acciones" style="justify-content: space-between;">
+            <h2>📌 Pipeline comercial</h2>
+            <div class="fila-acciones">
+              <button class="btn btn-sm" id="btnVerPapelera">🗑 Papelera</button>
+              <button class="btn btn-sm" id="btnCongelarRevision" title="Guardar una copia congelada de la propuesta actual">📎 Congelar revisión</button>
+            </div>
+          </div>
+          <div id="estado-proyecto" class="estado-proyecto"></div>
+          <div id="cont-kanban" class="kanban"></div>
+          <h3 style="margin-top: 22px;">Revisiones de la propuesta</h3>
+          <div class="scroll" id="cont-revisiones"></div>
+        </section>
+
+        <!-- Pestaña 8: Tablero gerencial -->
+        <section id="pane-tablero" class="pane">
+          <h2>📊 Tablero gerencial</h2>
+          <p class="hint">Métricas agregadas de todos los proyectos cargados. Cambian con lo que haya en la lista de la izquierda.</p>
+          <div class="kpis" id="kpi-tablero"></div>
+          <div class="dos-col">
+            <div>
+              <h3>Potencia cotizada por mes</h3>
+              <div id="chart-tablero-mes" class="chart-cont"></div>
+            </div>
+            <div>
+              <h3>Embudo comercial</h3>
+              <div id="cont-embudo"></div>
+            </div>
+          </div>
+          <div class="dos-col">
+            <div>
+              <h3>Por provincia</h3>
+              <div class="scroll" id="tabla-provincia"></div>
+            </div>
+            <div>
+              <h3>Por responsable</h3>
+              <div class="scroll" id="tabla-vendedor"></div>
+            </div>
+          </div>
+          <h3 style="margin-top: 18px;">Necesitan atención</h3>
+          <div id="cont-alertas"></div>
+        </section>
+
         <!-- Pestaña 7: Propuesta Comercial -->
         <section id="pane-propuesta" class="pane">
           <div class="fila-acciones" style="justify-content: space-between; margin-bottom: 16px;">
             <h2>📄 Propuesta Comercial Ejecutiva</h2>
-            <button class="btn btn-primario" id="btnImprimirPropuesta">🖨 Imprimir / Guardar en PDF</button>
+            <div class="fila-acciones">
+              <button class="btn btn-sm" id="btnCompartirWhatsapp" title="Abrir WhatsApp con el resumen de la propuesta">💬 WhatsApp</button>
+              <button class="btn btn-sm" id="btnCompartirEmail" title="Abrir el correo con el resumen de la propuesta">✉ Email</button>
+              <button class="btn btn-sm" id="btnDescargarHtml" title="Archivo HTML autónomo que se abre en cualquier navegador">⬇ Descargar HTML</button>
+              <button class="btn btn-primario" id="btnImprimirPropuesta">🖨 Imprimir / Guardar en PDF</button>
+            </div>
           </div>
           <div class="propuesta-card" id="propuesta-imprimible">
             <!-- Se genera dinámicamente -->
@@ -251,6 +347,7 @@
     <form class="modal-card" id="formMembrete">
       <div class="brand">🏢 Configuración de Membrete</div>
       <p class="hint">Estos datos y el logo encabezarán la propuesta comercial para tus clientes.</p>
+      <p class="hint" id="membreteAlcance"></p>
       
       <label class="campo">
         <span class="etiqueta">Logo de la empresa (PNG o JPG)</span>
@@ -278,6 +375,18 @@
     </form>
   </div>
 
+  <!-- Papelera de proyectos eliminados -->
+  <div id="modalPapelera" class="overlay" hidden>
+    <div class="modal-card modal-ancho">
+      <div class="brand">🗑 Papelera</div>
+      <p class="hint">Los proyectos eliminados quedan acá. Restauralos o borralos definitivamente.</p>
+      <div class="scroll" id="papeleraCuerpo"></div>
+      <div class="fila-acciones" style="justify-content: flex-end; margin-top: 10px;">
+        <button class="btn" type="button" id="btnCerrarPapelera">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Login (solo en modo nube) -->
   <div id="login" class="overlay" hidden>
     <form class="modal-card" id="loginForm">
@@ -301,10 +410,21 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/solar.js"></script>
+  <script src="js/techo3d.js"></script>
+  <script src="js/finanzas.js"></script>
+  <script src="js/riesgo.js"></script>
   <script src="js/calc.js"></script>
   <script src="js/db.js"></script>
   <script src="js/ejemplo.js"></script>
+  <script src="js/ui-comun.js"></script>
+  <script src="js/ui-techo3d.js"></script>
+  <script src="js/ui-analisis.js"></script>
+  <script src="js/ui-gestion.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

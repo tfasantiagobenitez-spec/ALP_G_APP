@@ -560,20 +560,52 @@ def build_manual():
     # 5.3. Balance Energético
     doc.add_heading("5.3. Modelo de Balance Energético y Autoconsumo", level=2)
     doc.add_paragraph(
-        "Para cada mes m del año (m = 1, ..., 12), el sistema determina la interacción con la red eléctrica:"
+        "El autoconsumo solo existe cuando la generación y la demanda coinciden en el mismo instante. "
+        "Por eso el motor no compara totales mensuales: resuelve el balance hora por hora para los doce meses "
+        "(12 × 24 = 288 pasos de cálculo) y recién después agrega los resultados a valores mensuales y anuales. "
+        "Para cada mes m se reparte la energía del mes entre las 24 horas de un día tipo y se despacha ese día:"
     )
-    
+
     box_balance = (
-        "1. Autoconsumo Solar Directo Mensual (kWh/mes):\n"
-        "   E_auto,m = min( E_gen,m , E_con,m )\n\n"
-        "2. Excedente Solar Mensual a Red (kWh/mes):\n"
-        "   E_exc,m = max( E_gen,m - E_con,m , 0 )\n\n"
-        "3. Energía Neta Importada de la Red (kWh/mes):\n"
-        "   E_red,m = max( E_con,m - E_gen,m , 0 )\n\n"
-        "4. Grado de Cobertura Solar de la Demanda (%):\n"
+        "1. Reparto horario de la energía del mes (kWh/h):\n"
+        "   E_gen,m,h = (E_gen,m / d_m) × f_solar,m,h\n"
+        "   E_con,m,h = (E_con,m / d_m) × f_dem,h\n"
+        "   d_m = días del mes; f_solar y f_dem suman 1 en las 24 horas.\n\n"
+        "2. Autoconsumo Solar Directo Horario (kWh/h):\n"
+        "   E_auto_dir,m,h = min( E_gen,m,h , E_con,m,h )\n\n"
+        "3. Excedente y déficit brutos antes de la batería (kWh/h):\n"
+        "   E_exc_bruto,m,h = E_gen,m,h - E_auto_dir,m,h\n"
+        "   E_red_bruto,m,h = E_con,m,h - E_auto_dir,m,h\n\n"
+        "4. Agregación mensual (kWh/mes), ya con el aporte del banco:\n"
+        "   E_auto,m = d_m × ∑_h ( E_auto_dir,m,h + Bat_descarga,m,h )\n"
+        "   E_exc,m  = d_m × ∑_h E_exc_final,m,h\n"
+        "   E_red,m  = d_m × ∑_h E_red_final,m,h\n\n"
+        "5. Grado de Cobertura Solar de la Demanda (%):\n"
         "   Cobertura (%) = [ ∑ E_auto,m / ∑ E_con,m ] × 100\n\n"
-        "5. Tasa de Aprovechamiento del Generador Solar (%):\n"
-        "   Aprovechamiento (%) = [ ∑ E_auto,m / ∑ E_gen,m ] × 100"
+        "6. Tasa de Aprovechamiento del Generador Solar (%):\n"
+        "   Aprovechamiento (%) = [ ∑ E_auto,m / ∑ E_gen,m ] × 100\n\n"
+        "El balance conserva la energía en todos los casos:\n"
+        "   E_auto,m + E_exc,m = E_gen,m        E_auto,m + E_red,m = E_con,m"
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_balance)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    doc.add_paragraph(
+        "Compatibilidad con propuestas anteriores: el campo «Modelo de autoconsumo» permite volver al criterio mensual "
+        "E_auto,m = min(E_gen,m , E_con,m) que utilizaban las versiones previas del simulador. Ese modo supone que toda "
+        "la energía del mediodía encuentra demanda simultánea, sobreestima el ahorro y no simula el ciclado de las "
+        "baterías, por lo que solo debe usarse para reproducir una cotización ya entregada al cliente."
+    )
+
+    box_balance = (
+        "Criterio mensual (versión anterior, solo para reproducir cotizaciones ya emitidas):\n"
+        "   E_auto,m = min( E_gen,m , E_con,m )\n"
+        "   E_exc,m  = max( E_gen,m - E_con,m , 0 )\n"
+        "   E_red,m  = max( E_con,m - E_gen,m , 0 )"
     )
     p = doc.add_paragraph()
     r = p.add_run(box_balance)
@@ -583,30 +615,61 @@ def build_manual():
     p.paragraph_format.space_after = Pt(6)
 
     # 5.4. Curva de 24 Horas y Baterías BESS
-    doc.add_heading("5.4. Modelo de Simulación Horaria de 24 Horas y Almacenamiento con Baterías (BESS)", level=2)
+    doc.add_heading("5.4. Geometría Solar Horaria y Almacenamiento con Baterías (BESS)", level=2)
     doc.add_paragraph(
-        "El motor modela la dinámica horaria (h = 0, ..., 23) superponiendo la campana solar con la curva de demanda del usuario "
-        "y el ciclo de carga/descarga del banco de baterías:"
+        "La forma de la campana solar no se asume: se deduce de la posición del sol en el emplazamiento. "
+        "El motor toma la latitud y la longitud de la localidad elegida, calcula la declinación solar del día "
+        "representativo de cada mes y reparte la energía según el coseno del ángulo cenital. De ahí surgen, sin "
+        "parámetros adicionales, los días largos de verano, los días cortos de invierno y el corrimiento del "
+        "mediodía solar respecto del reloj (huso UTC-3), que en el centro del país cae cerca de las 13:00 hs."
     )
-    
+
     box_bess = (
-        "1. Generación Solar Horaria Media Diaria (kWh):\n"
-        "   E_gen,h = (E_anual / 365) × f_solar,h\n"
-        "   Donde f_solar es la campana de irradiancia centrada a las 13:00 hs.\n\n"
-        "2. Capacidad Útil del Banco de Baterías (kWh):\n"
+        "1. Declinación Solar del día representativo n del mes (grados):\n"
+        "   δ = 23.45 × sen( 360° × (284 + n) / 365 )\n"
+        "   n = 17, 47, 75, 105, 135, 162, 198, 228, 258, 288, 318, 344 (días tipo de Klein)\n\n"
+        "2. Ángulo Horario corregido por el huso horario (grados):\n"
+        "   ω_h = 15° × ( h + 0.5 - 12 - Δt )        Δt = (λ_ref - λ_local) / 15    ,  λ_ref = -45° (UTC-3)\n\n"
+        "3. Coseno del Ángulo Cenital y fracción horaria de generación:\n"
+        "   cos θ_z,h = sen(φ) · sen(δ) + cos(φ) · cos(δ) · cos(ω_h)        φ = latitud del sitio\n"
+        "   f_solar,m,h = max( cos θ_z,h , 0 ) / ∑_h max( cos θ_z,h , 0 )    → ∑_h f_solar,m,h = 1\n\n"
+        "4. Capacidad Útil del Banco de Baterías (kWh):\n"
         "   C_util = C_nominal × (DoD% / 100)    (Litio LFP: DoD 80-90%, Gel: DoD 50%)\n\n"
-        "3. Límite de Potencia de Carga/Descarga (kW - Régimen 0.5C):\n"
-        "   P_bat,max = C_util / 2 h\n\n"
-        "4. Dinámica de Carga con Excedente Solar (11:00 a 15:00 hs):\n"
-        "   Bat_carga,h = min( E_exc_bruto,h , C_util - SoC_h , P_bat,max )\n"
-        "   SoC_h+1 = SoC_h + Bat_carga,h × η_carga    (η_carga = 95%)\n\n"
-        "5. Dinámica de Descarga en Horario Pico Nocturno (18:00 a 22:00 hs):\n"
-        "   Bat_descarga,h = min( E_red_bruto,h , SoC_h , P_bat,max )\n"
-        "   SoC_h+1 = SoC_h - Bat_descarga,h\n\n"
-        "6. Autoconsumo Total Integrado con Baterías:\n"
+        "5. Límite de Potencia de Carga/Descarga (kW):\n"
+        "   P_bat,max = C_nominal × C_rate        (C_rate típico 0.5)\n\n"
+        "6. Rendimiento repartido entre carga y descarga:\n"
+        "   η_c = η_d = √(η_ida_y_vuelta)          (Litio LFP: 92%, Gel: 82%)\n\n"
+        "7. Dinámica de Carga con Excedente Solar:\n"
+        "   Bat_carga,h = min( E_exc_bruto,h , P_bat,max , (C_util - SoC_h) / η_c )\n"
+        "   SoC_h+1 = SoC_h + Bat_carga,h × η_c\n\n"
+        "8. Dinámica de Descarga cuando falta generación:\n"
+        "   Bat_descarga,h = min( E_red_bruto,h , P_bat,max , SoC_h × η_d )\n"
+        "   SoC_h+1 = SoC_h - Bat_descarga,h / η_d\n\n"
+        "9. Autoconsumo Total Integrado con Baterías:\n"
         "   E_auto_total,h = E_auto_directo,h + Bat_descarga,h\n\n"
-        "7. Autonomía del Sistema de Respaldo (Horas):\n"
+        "10. Autonomía del Sistema de Respaldo (Horas):\n"
         "   Autonomia = C_util / (E_con_anual / 8760 h)"
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_bess)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    doc.add_paragraph(
+        "El día tipo de cada mes se simula tres veces encadenando el estado de carga final con el inicial, de modo que "
+        "el banco arranca el cálculo en su régimen estacionario y no en un estado artificialmente vacío. El aporte de "
+        "las baterías se valoriza como energía que deja de comprarse a la red en lugar de verterse como excedente: "
+        "Ahorro_bateria = E_bat,anual × (Tarifa_con_impuestos - Tarifa_inyección). El banco también incorpora su propio "
+        "recambio en el flujo de fondos, cada «Vida útil del banco» años y por un porcentaje configurable de su costo."
+    )
+
+    box_bess = (
+        "Perfiles horarios de demanda utilizados (fracciones normalizadas a suma 1):\n"
+        "   Residencial : picos de mañana y, sobre todo, de 18:00 a 22:00 hs\n"
+        "   Comercial   : meseta diurna de 09:00 a 18:00 hs\n"
+        "   Industrial  : curva casi plana, con leve realce en los turnos diurnos"
     )
     p = doc.add_paragraph()
     r = p.add_run(box_bess)
@@ -643,7 +706,46 @@ def build_manual():
     p.paragraph_format.space_after = Pt(6)
 
     # 5.6. Modelo Tarifario y Ahorro
-    doc.add_heading("5.6. Modelo Tarifario e Impuestos Eléctricos", level=2)
+    doc.add_heading("5.6. Modelo Tarifario: Bandas Horarias, IVA y Potencia Contratada", level=2)
+    doc.add_paragraph(
+        "Una factura eléctrica argentina no es un único precio por kWh. Tiene energía en bandas horarias, cargo por "
+        "potencia contratada, cargo fijo y un IVA que, según la condición del cliente, es costo o es crédito fiscal. "
+        "El simulador valoriza cada kWh autoconsumido al precio de la banda en la que efectivamente se produjo."
+    )
+
+    box_bandas = (
+        "1. Bandas horarias (resolución de la Secretaría de Energía):\n"
+        "   Pico   18:00 a 23:00      Valle  23:00 a 05:00      Resto  el horario restante\n"
+        "   Los límites son configurables por proyecto.\n\n"
+        "2. Precio final de la hora h ($/kWh):\n"
+        "   Precio_h = Tarifa_banda(h) × (1 + Σ Impuestos% / 100) × (1 + IVA_aplicable% / 100)\n\n"
+        "3. IVA según la condición del cliente:\n"
+        "   Consumidor final o monotributista → IVA_aplicable = IVA        (es un costo)\n"
+        "   Responsable inscripto            → IVA_aplicable = 0          (es crédito fiscal)\n"
+        "   Computar el IVA para un responsable inscripto sobreestima el ahorro un 21 %.\n\n"
+        "4. Ahorro por energía del mes m ($):\n"
+        "   Ahorro_m = d_m × Σ_h [ E_auto,m,h × Precio_h + E_exc,m,h × Tarifa_inyección ]\n\n"
+        "5. Ahorro por potencia contratada ($/año), solo si el cliente renegocia el contrato:\n"
+        "   ΔP_m = max( P_punta_sin_solar,m - P_punta_con_solar,m , 0 )\n"
+        "   Ahorro_potencia = Σ_m ΔP_m × Cargo_potencia\n"
+        "   Por defecto no se computa: la punta de demanda suele caer fuera del horario solar y bajar\n"
+        "   la potencia facturada exige renegociar con la distribuidora.\n\n"
+        "6. Factura anual estimada, para mostrar el antes y el después:\n"
+        "   Factura = E_consumo × Tarifa_plena + Cargo_fijo × 12 + P_contratada × Cargo_potencia × 12"
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_bandas)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    doc.add_paragraph(
+        "Conviene tener presente que el sol produce en la banda resto y prácticamente nada en la de pico. Una tarifa "
+        "con pico caro mejora poco el ahorro solar, salvo que haya baterías que desplacen energía al horario nocturno."
+    )
+
+    doc.add_heading("5.6.1. Impuestos Eléctricos por Distribuidora", level=3)
     doc.add_paragraph(
         "El ahorro monetario del cliente se calcula valorizando el autoconsumo a la tarifa completa con impuestos:"
     )
@@ -664,29 +766,109 @@ def build_manual():
     p.paragraph_format.space_after = Pt(6)
 
     # 5.7. Modelo Financiero de Compra Directa
-    doc.add_heading("5.7. Modelo Financiero de Compra Directa (Flujo de Fondos, VAN, TIR, Payback y LCOE)", level=2)
+    doc.add_heading("5.7. Marco Monetario: Moneda de Análisis, Devaluación y Tasas Equivalentes", level=2)
     doc.add_paragraph(
-        "Modela el flujo de caja dinámico a lo largo de 20 a 30 años incorporando degradación de celdas, inflación energética, OPEX y recambio de inversores:"
+        "El ahorro nace en pesos y la inversión se cotiza en dólares, así que el análisis solo cierra si las dos monedas "
+        "se tratan de forma consistente. El simulador proyecta un tipo de cambio año a año a partir de la devaluación "
+        "esperada y vincula las dos tasas de descuento con la relación de Fisher. El usuario carga la tasa en la moneda "
+        "en la que decide analizar el proyecto y la otra se deriva sola, de modo que el VAN es el mismo número medido "
+        "en cualquiera de las dos monedas."
     )
-    
+
+    box_moneda = (
+        "1. Tipo de Cambio Proyectado al año t ($/U$D):\n"
+        "   TC_t = TC_0 × (1 + dev)^t                      dev: devaluación anual esperada\n\n"
+        "2. Tasas Equivalentes (relación de Fisher):\n"
+        "   (1 + r_pesos) = (1 + r_dolares) × (1 + dev)\n"
+        "   Se carga la tasa de la moneda de análisis y la otra se despeja de esta identidad.\n\n"
+        "3. Variación Real de la Tarifa medida en Dólares (%/año):\n"
+        "   inf_USD = [ (1 + inf_ARS) / (1 + dev) ] - 1\n"
+        "   Ejemplo: una tarifa que sube 20 % anual en pesos con 15 % de devaluación sube 4,35 % en dólares.\n\n"
+        "4. Equivalencia del VAN entre monedas (se demuestra sustituyendo 1 y 2):\n"
+        "   VAN_USD = ∑ [ Flujo_t / ( TC_t × (1 + r_dolares)^t ) ] = VAN_ARS / TC_0\n\n"
+        "5. Equivalencia de la TIR:\n"
+        "   (1 + TIR_pesos) = (1 + TIR_dolares) × (1 + dev)"
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_moneda)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    doc.add_paragraph(
+        "Con devaluación cero el ahorro crece en dólares al mismo ritmo que en pesos, lo que a veinte o treinta años "
+        "multiplica la tarifa en moneda dura de forma poco creíble. La app avisa en pantalla cuando se combina un "
+        "aumento tarifario alto con devaluación nula."
+    )
+
+    # 5.8. Régimen fiscal
+    doc.add_heading("5.8. Tratamiento de Ganancias y Comparación Simétrica", level=2)
+    doc.add_paragraph(
+        "Para un cliente que tributa Ganancias, el ahorro de energía reduce un gasto deducible y por lo tanto aumenta "
+        "la base imponible. Si ese efecto se ignora en la compra pero se reconoce el escudo del leasing, la comparación "
+        "queda sesgada a favor del leasing. El simulador ofrece tres regímenes y el simétrico es el único que compara "
+        "peras con peras."
+    )
+
+    box_fiscal = (
+        "Régimen SIMÉTRICO (recomendado para Responsable Inscripto):\n"
+        "   • El ahorro tributa:            Flujo_t = (Ahorro_t - OPEX_t - Recambio_t) × (1 - g)\n"
+        "   • La compra amortiza el equipo: Amort_t = CAPEX_ARS / N_amort        para t ≤ N_amort\n"
+        "     Escudo_amort,t = Amort_t × g        →   ∑ Escudo_amort = CAPEX_ARS × g\n"
+        "   • El leasing deduce el canon:   Escudo_leasing,t = (Canon_t + Seguro_t + Mtto_t) × g\n"
+        "   • El ahorro también tributa del lado del leasing, con la misma alícuota g.\n\n"
+        "Régimen SIN GANANCIAS (consumidor final o monotributista):\n"
+        "   g = 0 en ambas opciones: ni escudo fiscal ni impuesto sobre el ahorro.\n\n"
+        "Régimen ANTERIOR (solo para reproducir cotizaciones ya emitidas):\n"
+        "   El leasing deduce el canon pero la compra no amortiza y el ahorro no tributa.\n"
+        "   Favorece artificialmente al leasing; la app lo señala con una advertencia en pantalla.\n\n"
+        "   g: alícuota del Impuesto a las Ganancias (30 % o 35 %)\n"
+        "   N_amort: años de vida fiscal del equipo (5 por defecto)\n"
+        "   La amortización se computa sobre costo histórico, sin ajuste por inflación."
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_fiscal)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    doc.add_paragraph(
+        "Los resultados fiscales son una estimación de ingeniería, no un dictamen contable. Antes de presentarlos como "
+        "compromiso, validalos con el contador del cliente."
+    )
+
+    # 5.9. Modelo financiero
+    doc.add_heading("5.9. Modelo Financiero de Compra Directa (Flujo de Fondos, VAN, TIR, Payback y LCOE)", level=2)
+    doc.add_paragraph(
+        "Modela el flujo de caja dinámico a lo largo de 20 a 30 años incorporando degradación de celdas, actualización "
+        "tarifaria, OPEX, recambio de inversores y del banco de baterías, y el tratamiento fiscal de la sección anterior:"
+    )
+
     box_fin = (
         "1. Inversión Inicial Total (CAPEX):\n"
         "   CAPEX_USD = (P_kWp × Costo_kWp) + (C_bat_kWh × Costo_bat_kWh)\n"
-        "   CAPEX_ARS = CAPEX_USD × Tipo_de_Cambio\n\n"
-        "2. Flujo de Fondos del Año t (t = 1, 2, ..., N):\n"
+        "   CAPEX_ARS = CAPEX_USD × TC_0\n\n"
+        "2. Flujo de Fondos del Año t (t = 1, 2, ..., N), en pesos nominales:\n"
         "   • Generación año t:       E_gen,t = E_anual × (1 - d)^(t-1)          (d: degradación anual ~0.5%)\n"
-        "   • Ahorro energético t:    Ahorro_t = Ahorro_1 × (1 - d)^(t-1) × (1 + inf)^(t-1)   (inf: inflación anual)\n"
+        "   • Ahorro energético t:    Ahorro_t = Ahorro_1 × (1 - d)^(t-1) × (1 + inf)^(t-1)\n"
         "   • Gasto OPEX año t:       OPEX_t = CAPEX_ARS × (OPEX% / 100) × (1 + inf)^(t-1)\n"
-        "   • Recambio Inversor t:    Recambio_t = CAPEX_ARS × (Recambio% / 100) × (1 + inf)^(t-1)  (si t mod k = 0)\n"
-        "   • Flujo Neto Nominal:     Flujo_t = Ahorro_t - OPEX_t - Recambio_t\n\n"
+        "   • Recambio inversor t:    CAPEX_solar × (Recambio% / 100) × (1 + inf)^(t-1)   (si t mod k = 0)\n"
+        "   • Recambio banco t:       CAPEX_bat × (Recambio_bat% / 100) × (1 + inf)^(t-1) (si t mod Vida_bat = 0)\n"
+        "   • Flujo neto:             Flujo_t = (Ahorro_t - OPEX_t - Recambio_t) × (1 - g) + Amort_t × g\n"
+        "   • Su equivalente en dólares:  Flujo_USD,t = Flujo_t / TC_t\n\n"
         "3. Valor Actual Neto (VAN):\n"
-        "   VAN = -CAPEX + ∑ [ Flujo_t / (1 + r)^t ]    (r: tasa de descuento WACC)\n\n"
+        "   VAN_ARS = -CAPEX_ARS + ∑ [ Flujo_t / (1 + r_pesos)^t ]\n"
+        "   VAN_USD = -CAPEX_USD + ∑ [ Flujo_USD,t / (1 + r_dolares)^t ] = VAN_ARS / TC_0\n\n"
         "4. Tasa Interna de Retorno (TIR):\n"
         "   Tasa r* que satisface la ecuación no lineal: VAN(r*) = 0\n"
-        "   (Calculada numéricamente mediante algoritmo de bisección con convergencia |f(r)| < 10^-7).\n\n"
+        "   (Calculada numéricamente mediante algoritmo de bisección con convergencia |f(r)| < 10^-7).\n"
+        "   Se informan por separado la TIR en pesos nominales y la TIR en dólares.\n\n"
         "5. Período de Recupero de la Inversión (Payback Simple con Interpolación Lineal):\n"
-        "   Payback = (t - 1) + [ |Flujo_Acumulado_{t-1}| / Flujo_t ]\n\n"
-        "6. Costo Nivelado de la Energía (LCOE - Levelized Cost of Energy):\n"
+        "   Payback = (t - 1) + [ |Flujo_Acumulado_{t-1}| / Flujo_t ]\n"
+        "   Se mide sobre los flujos de la moneda de análisis elegida.\n\n"
+        "6. Costo Nivelado de la Energía (LCOE - Levelized Cost of Energy), siempre antes de impuestos:\n"
         "   LCOE = [ CAPEX + ∑ ( (OPEX_t + Recambio_t) / (1 + r)^t ) ] / [ ∑ ( E_gen,t / (1 + r)^t ) ]"
     )
     p = doc.add_paragraph()
@@ -696,8 +878,8 @@ def build_manual():
     r.font.color.rgb = RGBColor(30, 41, 59)
     p.paragraph_format.space_after = Pt(6)
 
-    # 5.8. Modelo de Leasing
-    doc.add_heading("5.8. Modelo Financiero de Leasing Solar y Escudo Fiscal", level=2)
+    # 5.10. Modelo de Leasing
+    doc.add_heading("5.10. Modelo Financiero de Leasing Solar y Escudo Fiscal", level=2)
     doc.add_paragraph(
         "Modela el contrato de leasing operativo/financiero y cuantifica el beneficio impositivo en Ganancias:"
     )
@@ -712,9 +894,17 @@ def build_manual():
         "   Ahorro_Ganancias = Gasto_Deducible × (Alícuota_Ganancias / 100)    (Alícuota: 30% o 35%)\n\n"
         "4. Costo Neto Efectivo del Leasing (USD):\n"
         "   Costo_neto = Costo_bruto - Ahorro_Ganancias\n\n"
-        "5. Flujo Mensual Neto Operativo (USD/mes):\n"
-        "   Flujo_mes = Ahorro_Solar_mes - [ Canon_mes + (Seguro_anual + Mtto_anual) / 12 ]\n"
-        "   (Si Flujo_mes > 0, el sistema genera excedente de caja positivo desde el primer mes)."
+        "5. Flujo Anual del Cliente (USD), con el ahorro convertido al TC proyectado de cada año:\n"
+        "   Ahorro_USD,t = Ahorro_ARS,t / TC_t\n"
+        "   Flujo_t = Ahorro_USD,t × (1 - g) - Costo_leasing_t + Escudo_leasing_t\n"
+        "   El factor (1 - g) es el mismo que se aplica a la compra directa: sin él la comparación\n"
+        "   entre las dos opciones queda sesgada a favor del leasing.\n\n"
+        "6. Flujo Mensual Neto Operativo (USD/mes):\n"
+        "   Flujo_mes = Ahorro_Solar_mes × (1 - g) - [ Canon_mes + (Seguro_anual + Mtto_anual) / 12 ]\n"
+        "   (Si Flujo_mes > 0, el sistema genera excedente de caja positivo desde el primer mes).\n\n"
+        "7. Descuento del flujo:\n"
+        "   Se usa r_dolares, la tasa equivalente en dólares de la sección 5.7, porque el flujo del\n"
+        "   leasing está expresado en esa moneda."
     )
     p = doc.add_paragraph()
     r = p.add_run(box_leasing)
@@ -723,8 +913,8 @@ def build_manual():
     r.font.color.rgb = RGBColor(30, 41, 59)
     p.paragraph_format.space_after = Pt(6)
 
-    # 5.9. Análisis de Sensibilidad
-    doc.add_heading("5.9. Modelo de Análisis de Sensibilidad Bidimensional", level=2)
+    # 5.11. Análisis de Sensibilidad
+    doc.add_heading("5.11. Modelo de Análisis de Sensibilidad Bidimensional", level=2)
     doc.add_paragraph(
         "Construye matrices matriciales cruzadas de evaluación de riesgo evaluando simultáneamente dos perturbaciones:"
     )
@@ -745,7 +935,132 @@ def build_manual():
     p.paragraph_format.space_after = Pt(6)
 
     # 5.10. Impacto Ambiental ESG
-    doc.add_heading("5.10. Modelo de Descarbonización e Impacto Ambiental (ESG)", level=2)
+    doc.add_heading("5.12. Dimensionamiento Eléctrico del Inversor y de las Cadenas", level=2)
+    doc.add_paragraph(
+        "La ventana de tensión de un inversor se verifica en los dos extremos térmicos del año. Con el mínimo "
+        "histórico de temperatura la tensión de circuito abierto sube y no puede superar la máxima admisible; con la "
+        "celda caliente la tensión de máxima potencia baja y tiene que quedar por encima de la mínima de seguimiento."
+    )
+
+    box_inv = (
+        "1. Tensión de circuito abierto con la mínima temperatura de diseño (V):\n"
+        "   Voc_frío = Voc_STC × [ 1 + (coef_Voc / 100) × (T_min - 25) ]\n\n"
+        "2. Temperatura de celda en el peor caso de calor (°C):\n"
+        "   T_celda,max = T_amb,max + (NOCT - 20) / 800 × 1000\n\n"
+        "3. Tensión de máxima potencia con la celda caliente (V):\n"
+        "   Vmp_caliente = Vmp_STC × [ 1 + (coef_Voc / 100) × (T_celda,max - 25) ]\n\n"
+        "4. Módulos en serie admisibles:\n"
+        "   N_max = piso( V_max_inversor / Voc_frío )\n"
+        "   N_min = techo( max( V_arranque , V_min_seguimiento ) / Vmp_caliente )\n"
+        "   Se elige la serie más larga que entra en la ventana: menos corriente y menos pérdida en el cableado.\n\n"
+        "5. Cadenas en paralelo:\n"
+        "   N_cadenas = techo( N_módulos / N_serie )\n"
+        "   La corriente de cortocircuito del módulo no puede superar la máxima de la entrada MPPT.\n\n"
+        "6. Relación entre generador e inversor:\n"
+        "   DC/AC = P_kWp / P_inversor_AC        (habitual 1,10 a 1,30)\n\n"
+        "7. Potencia de pico en un día despejado (kW):\n"
+        "   P_pico,DC = P_kWp × (G_plano,max / 1000) × Factor_DC\n"
+        "   Factor_DC descuenta las pérdidas anteriores al inversor: temperatura, suciedad,\n"
+        "   dispersión entre módulos y caída en el cableado de continua.\n\n"
+        "8. Régimen de generación distribuida (Ley 27.424):\n"
+        "   La potencia instalada no puede superar la potencia contratada para poder inyectar."
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_inv)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    doc.add_paragraph(
+        "El recorte por potencia se informa de dos maneras porque son dos cosas distintas. El del día despejado es el "
+        "criterio de diseño: con una relación DC/AC de 1,20 se recorta cerca del 3 % de la energía del día y con 1,50, "
+        "cerca del 14 %. El del año medio sale del balance horario, que promedia días nublados y aplana el pico, así "
+        "que siempre da menos. El primero sirve para elegir el inversor; el segundo, para el flujo de fondos."
+    )
+
+    # 5.13. Financiamiento
+    doc.add_heading("5.13. Préstamo Bancario, PPA y Comparación de Alternativas", level=2)
+    doc.add_paragraph(
+        "Las cuatro alternativas de financiamiento se expresan en dólares, con el ahorro convertido al tipo de cambio "
+        "proyectado de cada año y descontadas a la misma tasa. Solo así la comparación no depende de en qué moneda "
+        "esté expresada cada pata del negocio."
+    )
+
+    box_fin2 = (
+        "1. Cuota del sistema francés (cuota constante):\n"
+        "   Cuota = Capital × i × (1 + i)^n / [ (1 + i)^n - 1 ]        i = TNA / 12 / 100\n\n"
+        "2. Sistema alemán (amortización constante):\n"
+        "   Amortización_m = Capital / n          Interés_m = Saldo_{m-1} × i\n\n"
+        "3. Préstamo ajustable por UVA:\n"
+        "   El capital se indexa antes de devengar el interés del período:\n"
+        "   Saldo_indexado = Saldo × (1 + ajuste_mensual)\n\n"
+        "4. Costo financiero total efectivo anual:\n"
+        "   Tasa mensual i* que anula:  Capital_neto - Σ [ Cuota_m / (1 + i*)^m ] = 0\n"
+        "   CFT = (1 + i*)^12 - 1        Incluye los gastos de otorgamiento.\n\n"
+        "5. Flujo del cliente con préstamo (U$D del año t):\n"
+        "   Flujo_t = (Ahorro_t - OPEX_t) × (1 - g) - Cuota_t + (Interés_t + Amortización_equipo_t) × g\n"
+        "   El interés del préstamo y la amortización del equipo son deducibles.\n\n"
+        "6. Flujo del cliente con PPA:\n"
+        "   Pago_PPA,t = E_autoconsumida,t × Precio_PPA × (1 + ajuste)^(t-1)\n"
+        "   Flujo_t = Valor_energía_red,t × (1 - g) - Pago_PPA,t - Opción_compra_t + Escudo_t\n"
+        "   El cliente no invierte: su desembolso inicial es cero."
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_fin2)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    doc.add_paragraph(
+        "Endeudarse en pesos cuando se espera una devaluación alta licúa la deuda, y el modelo lo refleja: el mismo "
+        "préstamo en pesos y en dólares da valores actuales netos muy distintos. Es una diferencia real, no un "
+        "artefacto del cálculo."
+    )
+
+    # 5.14. Riesgo
+    doc.add_heading("5.14. Análisis de Incertidumbre: Monte Carlo y Tornado", level=2)
+    doc.add_paragraph(
+        "Un único valor de VAN esconde cuánto puede moverse el resultado. La simulación de Monte Carlo sortea miles de "
+        "escenarios moviendo todas las variables inciertas a la vez y devuelve la distribución completa. El diagrama "
+        "de tornado, en cambio, mueve una variable por vez y ordena cuál pesa más."
+    )
+
+    box_riesgo = (
+        "1. Variables inciertas y su dispersión típica (todas configurables):\n"
+        "   Recurso solar             ±4 %      variabilidad interanual de la irradiación\n"
+        "   Tarifa eléctrica          ±10 %     incertidumbre del precio de la energía\n"
+        "   Costo del sistema         ±8 %      precio de módulos, inversores y montaje\n"
+        "   Actualización tarifaria   ±5 p.p.   ritmo de actualización en pesos\n"
+        "   Devaluación               ±5 p.p.   ritmo de depreciación del peso\n"
+        "   Degradación de módulos    ±0,15 p.p.\n\n"
+        "2. Sorteo de cada escenario:\n"
+        "   Variable_rel = Base × (1 + z × σ / 100)        Variable_abs = Base + z × σ\n"
+        "   z ~ N(0,1) por el método polar de Box-Muller.\n"
+        "   El generador lleva semilla fija: el mismo proyecto devuelve siempre los mismos números.\n\n"
+        "3. Salidas de la simulación:\n"
+        "   P(VAN > 0)     probabilidad de que el proyecto sea rentable\n"
+        "   P10, P50, P90  percentiles pesimista, central y optimista del VAN\n\n"
+        "4. Diagrama de tornado:\n"
+        "   Para cada variable, con las demás en su valor base:\n"
+        "   Amplitud_i = | VAN(Base_i + k·σ_i) - VAN(Base_i - k·σ_i) |        k = 1,5 por defecto\n"
+        "   Las variables se ordenan por amplitud decreciente."
+    )
+    p = doc.add_paragraph()
+    r = p.add_run(box_riesgo)
+    r.font.name = "Consolas"
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(30, 41, 59)
+    p.paragraph_format.space_after = Pt(6)
+
+    doc.add_paragraph(
+        "En los proyectos argentinos el tornado casi siempre pone arriba la actualización tarifaria y la devaluación, "
+        "muy por encima del recurso solar y del precio de los paneles. Eso dice dónde está el riesgo real del negocio: "
+        "en la macroeconomía, no en la ingeniería."
+    )
+
+    doc.add_heading("5.15. Modelo de Descarbonización e Impacto Ambiental (ESG)", level=2)
     doc.add_paragraph(
         "Cuantifica los beneficios ecológicos a partir del factor de emisión de la matriz eléctrica argentina (SADI):"
     )

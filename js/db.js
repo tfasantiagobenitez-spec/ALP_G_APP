@@ -12,6 +12,13 @@
   }
 
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+  /** Numera las revisiones como A, B, ... Z, AA, AB, al estilo de los planos de obra. */
+  function letraRevision(n) {
+    let s = '', x = Math.max(1, Math.round(n));
+    while (x > 0) { const r = (x - 1) % 26; s = String.fromCharCode(65 + r) + s; x = Math.floor((x - 1) / 26); }
+    return s;
+  }
   /** "11/6/2026, 04:04:07" (formato de los datos originales) */
   function fechaFmt(d) {
     d = d ? new Date(d) : new Date();
@@ -60,11 +67,66 @@
     { id: 'gen', nombre: 'Genérica (solo impuestos)', provincia: '', impuestos: [{ nombre: 'Impuestos', pct: 10.5 }, { nombre: '', pct: 0 }, { nombre: '', pct: 0 }, { nombre: '', pct: 0 }, { nombre: '', pct: 0 }] },
   ];
 
+  /** Membrete por defecto. Los datos de contacto van vacíos: la app no imprime hasta que se completen. */
+  const MEMBRETE_DEFAULT = {
+    nombre: 'ALP GROUP',
+    slogan: 'Ingeniería y Desarrollo Fotovoltaico · Autoconsumo & Eficiencia',
+    asesor: '',
+    tel: '',
+    email: '',
+    validez: '15',
+    logo: 'img/logo.svg',
+  };
+  const CAMPOS_MEMBRETE = ['nombre', 'slogan', 'asesor', 'tel', 'email', 'validez', 'logo'];
+
+  function limpiarMembrete(m) {
+    const out = {};
+    CAMPOS_MEMBRETE.forEach(k => { out[k] = m && m[k] != null ? String(m[k]) : MEMBRETE_DEFAULT[k]; });
+    return out;
+  }
+
+  /** Etapas del pipeline comercial, en el orden en que avanza una venta. */
+  const ETAPAS = [
+    { clave: 'borrador', nombre: 'Borrador', prob: 10, color: 'gris', descripcion: 'Se está armando la cotización' },
+    { clave: 'enviada', nombre: 'Enviada', prob: 30, color: 'azul', descripcion: 'El cliente ya la tiene' },
+    { clave: 'negociacion', nombre: 'En negociación', prob: 60, color: 'ambar', descripcion: 'Hay ida y vuelta sobre precio o alcance' },
+    { clave: 'ganada', nombre: 'Ganada', prob: 100, color: 'verde', descripcion: 'Contrato firmado' },
+    { clave: 'perdida', nombre: 'Perdida', prob: 0, color: 'rojo', descripcion: 'No prosperó' },
+  ];
+  const CLAVES_ETAPA = ETAPAS.map(e => e.clave);
+  function etapaValida(v) { return CLAVES_ETAPA.indexOf(v) >= 0 ? v : 'borrador'; }
+  function etapaDe(clave) { return ETAPAS.find(e => e.clave === etapaValida(clave)); }
+
+  const MOTIVOS_PERDIDA = [
+    'Precio', 'Plazo de entrega', 'Eligió otro proveedor', 'Postergó la inversión',
+    'No consiguió financiamiento', 'Cambió de proyecto', 'Sin respuesta', 'Otro',
+  ];
+
+  /** Catálogo de referencia para el modo local, con los mismos ítems que carga el esquema. */
+  const PRODUCTOS_DEFAULT = [
+    { id: 'mod575', categoria: 'modulo', marca: 'Genérico', modelo: 'Monocristalino 575 Wp', descripcion: 'Módulo bifacial N-Type 575 Wp', unidad: 'u.', precio_usd: 62, activo: true, specs: { wp: 575, voc: 51.8, vmp: 43.4, isc: 14.05, imp: 13.25, coef_voc: -0.25, noct: 45, coef_pot: -0.35, largo_m: 2.278, ancho_m: 1.134, peso_kg: 28.5 } },
+    { id: 'mod450', categoria: 'modulo', marca: 'Genérico', modelo: 'Monocristalino 450 Wp', descripcion: 'Módulo monocristalino PERC 450 Wp', unidad: 'u.', precio_usd: 50, activo: true, specs: { wp: 450, voc: 49.5, vmp: 41.2, isc: 11.4, imp: 10.9, coef_voc: -0.27, noct: 45, coef_pot: -0.35, largo_m: 2.094, ancho_m: 1.038, peso_kg: 23.5 } },
+    { id: 'inv50', categoria: 'inversor', marca: 'Genérico', modelo: 'String trifásico 50 kW', descripcion: 'Inversor de red trifásico 50 kW, 4 MPPT', unidad: 'u.', precio_usd: 2600, activo: true, specs: { potencia_ac: 50, v_max: 1100, v_min: 200, v_arranque: 160, mppt: 4, i_max_mppt: 30, eficiencia: 98.4 } },
+    { id: 'inv25', categoria: 'inversor', marca: 'Genérico', modelo: 'String trifásico 25 kW', descripcion: 'Inversor de red trifásico 25 kW, 2 MPPT', unidad: 'u.', precio_usd: 1500, activo: true, specs: { potencia_ac: 25, v_max: 1100, v_min: 200, v_arranque: 150, mppt: 2, i_max_mppt: 26, eficiencia: 98.3 } },
+    { id: 'inv5', categoria: 'inversor', marca: 'Genérico', modelo: 'String monofásico 5 kW', descripcion: 'Inversor de red monofásico 5 kW, 2 MPPT', unidad: 'u.', precio_usd: 520, activo: true, specs: { potencia_ac: 5, v_max: 600, v_min: 80, v_arranque: 60, mppt: 2, i_max_mppt: 16, eficiencia: 97.6 } },
+    { id: 'bat10', categoria: 'bateria', marca: 'Genérico', modelo: 'Banco LFP 10 kWh', descripcion: 'Banco de litio LiFePO4 10 kWh con BMS', unidad: 'u.', precio_usd: 3800, activo: true, specs: { kwh: 10, dod: 90, eficiencia: 94, vida_anios: 12, c_rate: 0.5 } },
+    { id: 'estchapa', categoria: 'estructura', marca: 'Genérico', modelo: 'Coplanar para chapa', descripcion: 'Perfilería y grampas para cubierta de chapa', unidad: 'kWp', precio_usd: 45, activo: true, specs: {} },
+    { id: 'estlosa', categoria: 'estructura', marca: 'Genérico', modelo: 'Triangular para losa', descripcion: 'Estructura inclinada con lastre para losa plana', unidad: 'kWp', precio_usd: 85, activo: true, specs: {} },
+    { id: 'esttierra', categoria: 'estructura', marca: 'Genérico', modelo: 'Hincada a tierra', descripcion: 'Estructura hincada para montaje en suelo', unidad: 'kWp', precio_usd: 110, activo: true, specs: {} },
+    { id: 'cable', categoria: 'cableado', marca: 'Genérico', modelo: 'Conjunto CC y CA', descripcion: 'Cable solar, conectores, canalización y puesta a tierra', unidad: 'kWp', precio_usd: 38, activo: true, specs: {} },
+    { id: 'tablero', categoria: 'tablero', marca: 'Genérico', modelo: 'Tablero de protecciones', descripcion: 'Tablero CC y CA con protecciones y seccionamiento', unidad: 'kWp', precio_usd: 32, activo: true, specs: {} },
+    { id: 'mano', categoria: 'mano_obra', marca: 'Genérico', modelo: 'Montaje e instalación', descripcion: 'Mano de obra de montaje, conexionado y puesta en marcha', unidad: 'kWp', precio_usd: 95, activo: true, specs: {} },
+    { id: 'ing', categoria: 'ingenieria', marca: 'Genérico', modelo: 'Proyecto y tramitación', descripcion: 'Ingeniería, planos, firma profesional y trámite de conexión', unidad: 'kWp', precio_usd: 45, activo: true, specs: {} },
+  ];
+
   // =====================================================================
   //  Adaptador LOCAL (localStorage)
   // =====================================================================
   const KEY_P = 'alp_g_app_proyectos_v1';
   const KEY_C = 'alp_g_app_clientes_v1';
+  const KEY_E = 'alp_g_app_empresa_v1';
+  const KEY_R = 'alp_g_app_revisiones_v1';
+  const KEY_PROD = 'alp_g_app_productos_v1';
 
   function lsLoad(key, def) {
     try { const raw = localStorage.getItem(key); if (raw) return JSON.parse(raw); } catch (e) { console.warn(e); }
@@ -82,13 +144,20 @@
     async login() { }, async registro() { }, async logout() { },
 
     proyectos: {
-      async list() {
+      async list(opciones) {
+        const enPapelera = !!(opciones && opciones.papelera);
         const data = lsLoad(KEY_P, { proyectos: {} });
         return Object.keys(data.proyectos).map(id => {
           const p = data.proyectos[id];
           return { id, nombre: p.nombre, kwp: p.kwp, resumen: p.resumen, cliente_id: p.cliente_id || null,
-            fecha: typeof p.fecha === 'string' ? p.fecha : '', actualizado_en: p.actualizado_en || null, estado: p.estado, autor: '' };
-        }).sort((a, b) => tsDe(b.id) - tsDe(a.id));
+            fecha: typeof p.fecha === 'string' ? p.fecha : '', actualizado_en: p.actualizado_en || null,
+            estado: p.estado, autor: '',
+            estado_comercial: etapaValida(p.estado_comercial), probabilidad: p.probabilidad || 0,
+            motivo_perdida: p.motivo_perdida || null, fecha_envio: p.fecha_envio || null,
+            fecha_cierre: p.fecha_cierre || null, eliminado_en: p.eliminado_en || null };
+        })
+          .filter(p => enPapelera ? !!p.eliminado_en : !p.eliminado_en)
+          .sort((a, b) => tsDe(b.id) - tsDe(a.id));
       },
       async get(id) {
         const p = lsLoad(KEY_P, { proyectos: {} }).proyectos[id];
@@ -101,16 +170,101 @@
         const id = p.id || 'p_' + Date.now();
         const est = estadoAStrings(p.estado);
         const ahora = new Date().toISOString();
+        const previo = data.proyectos[id] || {};
         data.proyectos[id] = {
           nombre: p.nombre || est.cliente_nombre || 'Sin nombre',
           fecha: fechaFmt(ahora), kwp: est.kwp || '0', resumen: resumenDe(est), estado: est,
           cliente_id: p.cliente_id || null, actualizado_en: ahora, legacy_id: p.legacy_id || null,
+          estado_comercial: etapaValida(p.estado_comercial || previo.estado_comercial),
+          probabilidad: p.probabilidad !== undefined ? p.probabilidad : (previo.probabilidad || 0),
+          motivo_perdida: p.motivo_perdida !== undefined ? p.motivo_perdida : (previo.motivo_perdida || null),
+          fecha_envio: p.fecha_envio !== undefined ? p.fecha_envio : (previo.fecha_envio || null),
+          fecha_cierre: p.fecha_cierre !== undefined ? p.fecha_cierre : (previo.fecha_cierre || null),
+          eliminado_en: previo.eliminado_en || null,
         };
         lsSave(KEY_P, data);
         return Object.assign({ id }, data.proyectos[id]);
       },
-      async remove(id) { const data = lsLoad(KEY_P, { proyectos: {} }); delete data.proyectos[id]; lsSave(KEY_P, data); },
+      /** Borrado lógico: el proyecto va a la papelera y se puede recuperar. */
+      async remove(id) {
+        const data = lsLoad(KEY_P, { proyectos: {} });
+        if (!data.proyectos[id]) return;
+        data.proyectos[id].eliminado_en = new Date().toISOString();
+        lsSave(KEY_P, data);
+      },
+      async restaurar(id) {
+        const data = lsLoad(KEY_P, { proyectos: {} });
+        if (!data.proyectos[id]) return;
+        data.proyectos[id].eliminado_en = null;
+        lsSave(KEY_P, data);
+      },
+      /** Borrado definitivo desde la papelera. */
+      async purgar(id) {
+        const data = lsLoad(KEY_P, { proyectos: {} });
+        delete data.proyectos[id];
+        lsSave(KEY_P, data);
+        const revs = lsLoad(KEY_R, {});
+        delete revs[id];
+        lsSave(KEY_R, revs);
+      },
+      async cambiarEtapa(id, cambios) {
+        const data = lsLoad(KEY_P, { proyectos: {} });
+        const p = data.proyectos[id];
+        if (!p) throw new Error('El proyecto ya no existe');
+        Object.assign(p, cambios, { estado_comercial: etapaValida(cambios.estado_comercial || p.estado_comercial) });
+        lsSave(KEY_P, data);
+        return Object.assign({ id }, p);
+      },
     },
+
+    propuestas: {
+      async list(proyectoId) {
+        const m = lsLoad(KEY_R, {});
+        return (m[proyectoId] || []).slice().sort((a, b) => b.revision - a.revision);
+      },
+      async crear(proyectoId, datos) {
+        const m = lsLoad(KEY_R, {});
+        const lista = m[proyectoId] || [];
+        const revision = lista.reduce((max, r) => Math.max(max, r.revision), 0) + 1;
+        const fila = {
+          id: 'r_' + Date.now(), proyecto_id: proyectoId, revision,
+          etiqueta: datos.etiqueta || ('Rev. ' + letraRevision(revision)),
+          nota: datos.nota || '', estado: estadoAStrings(datos.estado),
+          resumen: datos.resumen || null, creado_en: new Date().toISOString(), autor: '',
+        };
+        lista.push(fila);
+        m[proyectoId] = lista;
+        lsSave(KEY_R, m);
+        return fila;
+      },
+      async remove(proyectoId, id) {
+        const m = lsLoad(KEY_R, {});
+        m[proyectoId] = (m[proyectoId] || []).filter(r => r.id !== id);
+        lsSave(KEY_R, m);
+      },
+    },
+
+    productos: {
+      async list() {
+        const guardados = lsLoad(KEY_PROD, null);
+        return guardados && guardados.length ? guardados : PRODUCTOS_DEFAULT.slice();
+      },
+      async save(prod) {
+        const lista = await this.list();
+        const id = prod.id || 'p_' + Date.now();
+        const i = lista.findIndex(x => x.id === id);
+        const fila = Object.assign({ activo: true, specs: {} }, prod, { id });
+        if (i >= 0) lista[i] = fila; else lista.push(fila);
+        lsSave(KEY_PROD, lista);
+        return fila;
+      },
+      async remove(id) {
+        const lista = (await this.list()).filter(x => x.id !== id);
+        lsSave(KEY_PROD, lista);
+      },
+    },
+
+    async auditoria() { return []; },
 
     clientes: {
       async list() {
@@ -128,6 +282,13 @@
     },
 
     distribuidoras: { async list() { return DISTRIBUIDORAS_DEFAULT; } },
+
+    empresa: {
+      async get() { return limpiarMembrete(lsLoad(KEY_E, null)); },
+      async save(m) { const lim = limpiarMembrete(m); lsSave(KEY_E, lim); return lim; },
+    },
+    puedeEditarEmpresa() { return true; },
+
     async migrarLocal() { throw new Error('Solo disponible en modo nube'); },
     localPendientes() { return 0; },
   };
@@ -177,15 +338,23 @@
     async logout() { await this.client.auth.signOut(); },
 
     proyectos: {
-      async list() {
-        const { data, error } = await Nube.client.from('proyectos')
-          .select('id, legacy_id, cliente_id, nombre, kwp, resumen, enviado, creado_por, actualizado_en, estado, perfiles!proyectos_creado_por_fkey(nombre)')
+      async list(opciones) {
+        const enPapelera = !!(opciones && opciones.papelera);
+        let q = Nube.client.from('proyectos')
+          .select('id, legacy_id, cliente_id, nombre, kwp, resumen, enviado, creado_por, actualizado_en, estado, ' +
+            'estado_comercial, probabilidad, motivo_perdida, fecha_envio, fecha_cierre, eliminado_en, ' +
+            'perfiles!proyectos_creado_por_fkey(nombre)')
           .order('actualizado_en', { ascending: false });
+        q = enPapelera ? q.not('eliminado_en', 'is', null) : q.is('eliminado_en', null);
+        const { data, error } = await q;
         if (error) throw new Error(error.message);
         return data.map(r => ({
           id: r.id, nombre: r.nombre, kwp: r.kwp, resumen: r.resumen, cliente_id: r.cliente_id, enviado: r.enviado,
           creado_por: r.creado_por, autor: (r.perfiles && r.perfiles.nombre) || '',
           fecha: fechaFmt(r.actualizado_en), actualizado_en: r.actualizado_en, estado: r.estado,
+          estado_comercial: etapaValida(r.estado_comercial), probabilidad: r.probabilidad || 0,
+          motivo_perdida: r.motivo_perdida, fecha_envio: r.fecha_envio, fecha_cierre: r.fecha_cierre,
+          eliminado_en: r.eliminado_en,
         }));
       },
       async get(id) {
@@ -217,10 +386,95 @@
         }
         return Object.assign({}, data[0], { fecha: fechaFmt(data[0].actualizado_en) });
       },
+      /** Borrado lógico: queda en la papelera con quién y cuándo lo mandó. */
       async remove(id) {
+        const u = Nube.usuario();
+        const { error } = await Nube.client.from('proyectos')
+          .update({ eliminado_en: new Date().toISOString(), eliminado_por: u ? u.id : null }).eq('id', id);
+        if (error) throw new Error(error.message);
+      },
+      async restaurar(id) {
+        const { error } = await Nube.client.from('proyectos')
+          .update({ eliminado_en: null, eliminado_por: null }).eq('id', id);
+        if (error) throw new Error(error.message);
+      },
+      async purgar(id) {
         const { error } = await Nube.client.from('proyectos').delete().eq('id', id);
         if (error) throw new Error(error.message);
       },
+      async cambiarEtapa(id, cambios) {
+        const row = Object.assign({}, cambios);
+        if (row.estado_comercial) row.estado_comercial = etapaValida(row.estado_comercial);
+        const { data, error } = await Nube.client.from('proyectos').update(row).eq('id', id).select().single();
+        if (error) throw new Error(error.message);
+        return data;
+      },
+    },
+
+    propuestas: {
+      async list(proyectoId) {
+        const { data, error } = await Nube.client.from('propuestas')
+          .select('id, proyecto_id, revision, etiqueta, nota, estado, resumen, creado_en, creado_por, perfiles(nombre)')
+          .eq('proyecto_id', proyectoId).order('revision', { ascending: false });
+        if (error) throw new Error(error.message);
+        return data.map(r => Object.assign({}, r, { autor: (r.perfiles && r.perfiles.nombre) || '' }));
+      },
+      async crear(proyectoId, datos) {
+        const previas = await this.list(proyectoId);
+        const revision = previas.reduce((max, r) => Math.max(max, r.revision), 0) + 1;
+        const row = {
+          proyecto_id: proyectoId, revision,
+          etiqueta: datos.etiqueta || ('Rev. ' + letraRevision(revision)),
+          nota: datos.nota || '', estado: estadoAStrings(datos.estado), resumen: datos.resumen || null,
+        };
+        const { data, error } = await Nube.client.from('propuestas').insert(row).select().single();
+        if (error) throw new Error(error.message);
+        return data;
+      },
+      async remove(proyectoId, id) {
+        const { error } = await Nube.client.from('propuestas').delete().eq('id', id);
+        if (error) throw new Error(error.message);
+      },
+    },
+
+    productos: {
+      async list() {
+        const { data, error } = await Nube.client.from('productos').select('*').eq('activo', true).order('categoria');
+        if (error || !data || !data.length) return PRODUCTOS_DEFAULT.slice();
+        return data;
+      },
+      async save(prod) {
+        const row = {
+          categoria: prod.categoria, marca: prod.marca || '', modelo: prod.modelo || '',
+          descripcion: prod.descripcion || '', unidad: prod.unidad || 'u.',
+          precio_usd: Number(prod.precio_usd) || 0, specs: prod.specs || {}, activo: prod.activo !== false,
+        };
+        const q = prod.id && !/^[a-z]+\d*$/.test(String(prod.id))
+          ? Nube.client.from('productos').update(row).eq('id', prod.id)
+          : Nube.client.from('productos').insert(row);
+        const { data, error } = await q.select().single();
+        if (error) {
+          if (/row-level security|permission/i.test(error.message)) {
+            throw new Error('Solo un administrador puede editar el catálogo de equipos');
+          }
+          throw new Error(error.message);
+        }
+        return data;
+      },
+      async remove(id) {
+        const { error } = await Nube.client.from('productos').update({ activo: false }).eq('id', id);
+        if (error) throw new Error(error.message);
+      },
+    },
+
+    async auditoria(proyectoId) {
+      let q = Nube.client.from('auditoria')
+        .select('id, tabla, registro_id, accion, usuario_id, detalle, creado_en, perfiles:usuario_id(nombre)')
+        .eq('tabla', 'proyectos').order('creado_en', { ascending: false }).limit(100);
+      if (proyectoId) q = q.eq('registro_id', proyectoId);
+      const { data, error } = await q;
+      if (error) return [];
+      return data.map(r => Object.assign({}, r, { autor: (r.perfiles && r.perfiles.nombre) || '' }));
     },
 
     clientes: {
@@ -256,6 +510,28 @@
         return data;
       },
     },
+
+    empresa: {
+      async get() {
+        const { data, error } = await Nube.client.from('empresa').select('*').limit(1).maybeSingle();
+        if (error) { console.warn('No se pudo leer el membrete:', error.message); return limpiarMembrete(lsLoad(KEY_E, null)); }
+        return limpiarMembrete(data);
+      },
+      /** Solo un admin puede guardarlo; la RLS lo vuelve a verificar del lado del servidor. */
+      async save(m) {
+        const lim = limpiarMembrete(m);
+        const { data, error } = await Nube.client.from('empresa')
+          .upsert(Object.assign({ id: true }, lim)).select().single();
+        if (error) {
+          if (/row-level security|permission/i.test(error.message)) {
+            throw new Error('Solo un administrador puede cambiar el membrete de la empresa');
+          }
+          throw new Error(error.message);
+        }
+        return limpiarMembrete(data);
+      },
+    },
+    puedeEditarEmpresa() { const u = this.usuario(); return !!u && u.rol === 'admin'; },
 
     /** Sube a la nube los proyectos que quedaron en localStorage. Devuelve {subidos, omitidos}. */
     async migrarLocal() {
@@ -310,6 +586,11 @@
     get proyectos() { return this.adaptador.proyectos; },
     get clientes() { return this.adaptador.clientes; },
     get distribuidoras() { return this.adaptador.distribuidoras; },
+    get empresa() { return this.adaptador.empresa; },
+    get propuestas() { return this.adaptador.propuestas; },
+    get productos() { return this.adaptador.productos; },
+    puedeEditarEmpresa() { return this.adaptador.puedeEditarEmpresa(); },
+    auditoria(id) { return this.adaptador.auditoria(id); },
     migrarLocal() { return this.adaptador.migrarLocal(); },
     localPendientes() { return this.adaptador.localPendientes(); },
 
@@ -359,5 +640,12 @@
   DB.fechaFmt = fechaFmt;
   DB.resumenDe = resumenDe;
   DB.DISTRIBUIDORAS_DEFAULT = DISTRIBUIDORAS_DEFAULT;
+  DB.MEMBRETE_DEFAULT = MEMBRETE_DEFAULT;
+  DB.PRODUCTOS_DEFAULT = PRODUCTOS_DEFAULT;
+  DB.ETAPAS = ETAPAS;
+  DB.MOTIVOS_PERDIDA = MOTIVOS_PERDIDA;
+  DB.etapaDe = etapaDe;
+  DB.etapaValida = etapaValida;
+  DB.letraRevision = letraRevision;
   root.DB = DB;
 })(window);
