@@ -346,9 +346,26 @@ def build_manual():
     t_pilares.columns[0].width = Inches(2.2)
     t_pilares.columns[1].width = Inches(4.3)
 
+    doc.add_heading("Guía Operativa Paso a Paso para el Asesor Comercial:", level=3)
+    pasos_techo = [
+        ("1. Búsqueda y Localización Satelital: ", "Ingresá el parque industrial, ciudad o dirección en el buscador (ej: 'Parque Industrial Hudson, Berazategui') o presioná '📍 Mi GPS' para volar directamente a la planta."),
+        ("2. Delimitación de la Cubierta: ", "Podés optar por dos métodos instantáneos:\n"
+         "  • Método A (Trazado Manual): Hacé clic en '✏️ Trazar Techo', marcá con un solo clic cada una de las 4 esquinas del galpón sobre la foto satelital, y finalizá presionando el botón verde '✅ Listo / Cerrar Techo' (o clic en el punto verde #1 / doble clic).\n"
+         "  • Método B (Plantilla 90s): Centrá la fábrica en pantalla y presioná '🏭 Nave 1.200 m²', '🏢 Comercial 450 m²' o '🏬 Losa Plana 300 m²' para estampar la nave de inmediato."),
+        ("3. Optimización de Paneles y Orientación (Azimut): ", "En el panel lateral podés seleccionar la potencia del módulo (575 Wp Topcon, 600 Wp o 550 Wp), orientación Vertical u Horizontal y rotar el Azimut para que las filas sigan la cumbrera del techo. Al pulsar '⚡ Auto-Optimizar Disposición de Paneles', el sistema recalcula la retícula en milisegundos con capacidad para mega-naves logísticas de hasta 8.000 módulos (14.000+ m²)."),
+        ("4. Detección de Obstáculos y Sombras 3D: ", "Presioná '🚫 Añadir Obstáculo' para marcar chimeneas, climatizadores HVAC, tragaluces o árboles linderos. El sistema excluirá los paneles en la zona de interferencia y el motor astronómico (Three.js) calculará la sombra solar arrojada a lo largo del año, deduciendo el porcentaje de pérdida anual (% derate)."),
+        ("5. Transferencia al Proyecto y Cierre Comercial: ", "Revisá el resumen financiero express (ahorro mensual vs. cuota de leasing). Al presionar '⚡ Aplicar al Proyecto', la potencia (kWp), cantidad de paneles, azimut, inclinación y factor de sombras se transfieren en tiempo real a todas las pestañas de ingeniería y finanzas del simulador.")
+    ]
+    for bold_text, normal_text in pasos_techo:
+        p = doc.add_paragraph(style='List Bullet')
+        r_b = p.add_run(bold_text)
+        r_b.bold = True
+        r_b.font.color.rgb = RGBColor(0, 159, 227)
+        p.add_run(normal_text)
+
     create_callout_box(
         doc,
-        "Al presionar el botón '⚡ Aplicar al Proyecto Completo', el sistema vuelca inmediatamente la potencia pico (kWp), "
+        "Al presionar el botón '⚡ Aplicar al Proyecto', el sistema vuelca inmediatamente la potencia pico (kWp), "
         "cantidad de paneles, azimut, inclinación, superficie de cubierta y el factor de atenuación por sombras 3D calculado a todas las demás pestañas, "
         "recalculando el flujo de caja en el acto. El botón '💬 WhatsApp' abre un mensaje con el resumen y pitch comercial redactado para enviar al cliente durante la reunión, "
         "y el botón '📸 Foto 3D' descarga una captura fotorrealista en alta resolución del gemelo digital.",

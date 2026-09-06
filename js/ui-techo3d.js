@@ -231,7 +231,10 @@
               </label>
               <label class="campo">
                 <span class="etiqueta">Azimut (Norte = 0°)</span>
-                <div class="con-unidad"><input type="number" id="inpAzimutTecho" value="0" min="0" max="359"><span class="unidad">°</span></div>
+                <div class="con-unidad" style="display: flex; gap: 4px; align-items: center;">
+                  <input type="number" id="inpAzimutTecho" value="0" min="0" max="359"><span class="unidad">°</span>
+                  <button type="button" class="btn btn-xs" id="btnGirarAzimut90" title="Rotar orientación de paneles 90° (paralelo / perpendicular a la cumbrera)" style="padding: 2px 6px; font-size: 11px; white-space: nowrap;">🔄 90°</button>
+                </div>
               </label>
             </div>
             
@@ -1597,6 +1600,18 @@
       actualizarDimensionamiento();
     });
 
+    document.getElementById('btnGirarAzimut90')?.addEventListener('click', () => {
+      const azActual = state.azimutManual !== null ? state.azimutManual : (state.distribucion ? state.distribucion.azimutDeg : 0);
+      const nuevoAz = Math.round((azActual + 90) % 360);
+      state.azimutManual = nuevoAz;
+      const inpAz = document.getElementById('inpAzimutTecho');
+      if (inpAz) inpAz.value = nuevoAz;
+      actualizarDimensionamiento();
+      if (typeof window.toast === 'function') {
+        window.toast(`🔄 Paneles rotados a ${nuevoAz}°`);
+      }
+    });
+
     document.getElementById('selTipoCubierta')?.addEventListener('change', e => {
       state.tipoCubierta = e.target.value;
       actualizarDimensionamiento();
@@ -1714,6 +1729,21 @@
       if (typeof window.recalcular === 'function') {
         window.recalcular();
       }
+
+      // Resaltar visualmente las pestañas Datos y Propuesta para feedback inmediato
+      const tabDatos = document.querySelector('.tab[data-tab="datos"]');
+      const tabProp = document.querySelector('.tab[data-tab="propuesta"]');
+      [tabDatos, tabProp].forEach(t => {
+        if (t) {
+          t.style.transition = 'all 0.3s ease';
+          t.style.background = '#10b981';
+          t.style.color = '#ffffff';
+          setTimeout(() => {
+            t.style.background = '';
+            t.style.color = '';
+          }, 1400);
+        }
+      });
 
       if (typeof window.toast === 'function') {
         window.toast(`⚡ Proyecto actualizado: ${d.count} módulos (${d.potenciaKwp} kWp) | Sombras: ${state.perdidaSombrasAnualPct}%`);
