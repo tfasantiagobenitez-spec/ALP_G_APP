@@ -114,7 +114,7 @@ def build_manual():
     p_sub = doc.add_paragraph()
     p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p_sub.paragraph_format.space_after = Pt(28)
-    run_sub = p_sub.add_run("Simulador Fotovoltaico · Análisis Técnico-Económico, BESS, Matrices de Sensibilidad y Propuestas Comerciales")
+    run_sub = p_sub.add_run("Simulador Fotovoltaico v2.0 · Diseño Satelital 3D, BESS, Monte Carlo & Tornado, Pipeline Comercial, Tablero Gerencial y Propuestas Ejecutivas")
     run_sub.font.name = "Calibri"
     run_sub.font.size = Pt(14)
     run_sub.font.color.rgb = RGBColor(71, 85, 105)
@@ -156,18 +156,20 @@ def build_manual():
     toc_items = [
         ("1. Introducción y Propósito de la Plataforma", "3"),
         ("2. Arquitectura del Sistema y Persistencia Dual (Nube vs. Local)", "4"),
-        ("3. Guía Paso a Paso de las Pestañas de Análisis", "5"),
-        ("   3.1. Pestaña 📋 Datos & Asistente de Dimensionamiento", "5"),
-        ("   3.2. Pestaña 🛰️ Techo & 3D (Diseño Satelital y Cierre Express en 90s)", "6"),
-        ("   3.3. Pestaña ⚡ Energía, CO₂ y Desglose de Pérdidas Técnicas", "8"),
-        ("   3.4. Pestaña 📈 Resultados Económicos (Compra Directa)", "9"),
-        ("   3.5. Pestaña 🏦 Leasing vs. Compra al Contado", "10"),
-        ("   3.6. Pestaña 🎯 Análisis de Sensibilidad y Matrices de Riesgo", "11"),
+        ("3. Guía Paso a Paso de las 10 Pestañas de la Plataforma", "5"),
+        ("   3.1. Pestaña 📋 Datos, BOM Detallado y Chequeos Inteligentes", "5"),
+        ("   3.2. Pestaña 🛰️ Techo & 3D (Diseño Satelital, Gemelo Digital y Cierre Express en 90s)", "6"),
+        ("   3.3. Pestaña ⚡ Energía, Curva 24h, BESS y Pérdidas Técnicas (Sankey)", "8"),
+        ("   3.4. Pestaña 📈 Resultados Económicos (Compra Directa y Flujo de Fondos)", "9"),
+        ("   3.5. Pestaña 🏦 Financiamiento: Leasing ALP, Préstamos Bancarios y PPA", "10"),
+        ("   3.6. Pestaña 🎯 Riesgo: Simulación Monte Carlo, Gráfico de Tornado y Matrices", "11"),
         ("   3.7. Pestaña ⚖️ Comparador Multi-Proyecto Lado a Lado", "12"),
-        ("   3.8. Pestaña 📄 Propuesta Comercial Ejecutiva (Cotización para Clientes)", "12"),
-        ("4. Base de Datos Solar y Presets de Distribuidoras Argentinas", "13"),
-        ("5. Formulación Matemática y Algoritmos de Ingeniería", "14"),
-        ("6. Preguntas Frecuentes y Buenas Prácticas (FAQ)", "16"),
+        ("   3.8. Pestaña 📌 Pipeline Comercial, Revisiones Congeladas y Papelera", "13"),
+        ("   3.9. Pestaña 📊 Tablero Gerencial, Embudo de Ventas y Alertas de Seguimiento", "14"),
+        ("   3.10. Pestaña 📄 Propuesta Comercial Ejecutiva (PDF / HTML / WhatsApp / Email)", "15"),
+        ("4. Base de Datos Solar y Presets de Distribuidoras Argentinas", "16"),
+        ("5. Formulación Matemática y Algoritmos de Ingeniería", "17"),
+        ("6. Preguntas Frecuentes y Buenas Prácticas (FAQ)", "20"),
     ]
     
     t_toc = doc.add_table(rows=len(toc_items), cols=2)
@@ -205,13 +207,16 @@ def build_manual():
     
     doc.add_heading("Capacidades Principales:", level=2)
     bullets_s1 = [
-        ("Dimensionamiento Inteligente de Cubierta: ", "Calcula la potencia pico instalable y módulos a partir de los metros cuadrados (m²) de techo disponibles o por objetivo de cobertura de factura."),
-        ("Balance Energético Mensual y Curva Diaria: ", "Simula la curva solar campana de 24 horas frente al perfil de consumo del cliente, integrando almacenamiento con baterías (BESS)."),
-        ("Desglose de Pérdidas y PR: ", "Modela factores térmicos, suciedad (soiling), tolerancia (mismatch), cableado DC/AC y rendimiento del inversor."),
-        ("Evaluación Financiera Integral: ", "Cálculo en tiempo real de VAN (ARS/USD), TIR, Payback simple, Payback descontado, LCOE y ahorro acumulado a 20-30 años."),
-        ("Modelo Completo de Leasing vs. Contado: ", "Incorpora canon periódico, seguro, mantenimiento, opción de compra y deducción en el Impuesto a las Ganancias."),
-        ("Matrices de Riesgo y Sensibilidad: ", "Mapas de calor cruzados ante variaciones de tarifa eléctrica, CAPEX, inflación tarifaria y tasa de descuento."),
-        ("Propuesta Comercial Ejecutiva con Gráficos Vectoriales: ", "Generación de cotizaciones formales listas para imprimir o exportar a PDF con membrete de ALP GROUP y gráficos SVG."),
+        ("Diseño Satelital 3D y Cierre Express en 90s: ", "Trazado de cubiertas sobre mosaico Esri/OSM, auto-layout de hasta 8.000 módulos, gemelo digital 3D WebGL con cálculo de sombras por Ray-Casting astronómico y botón 'Aplicar al Proyecto'."),
+        ("Dimensionamiento Inteligente y BOM Detallado: ", "Asistente por superficie (m²) o consumo (kWh), desglose de presupuesto por ítems (Bill of Materials) y sistema de chequeos inteligentes con semáforo de validación en tiempo real."),
+        ("Balance Energético Mensual y Curva Diaria: ", "Simula la curva solar horaria de 24 horas frente al perfil de demanda del cliente, modelando almacenamiento con baterías BESS, desglose de pérdidas físicas (Sankey) y PR real."),
+        ("Evaluación Financiera Multimoneda Integral: ", "Cálculo instantáneo de VAN (ARS/USD), TIR, Payback simple y descontado, LCOE y ahorro acumulado a 20-30 años con conmutador ARS/USD y exportación de flujo a Excel (CSV)."),
+        ("Comparador de Financiamiento 4 Vías: ", "Evaluación comparativa de Compra Contado, Leasing ALP no bancario (con escudo fiscal en Ganancias del 30-35%), Préstamos Bancarios (Francés/Alemán/UVA con CFT) y esquemas PPA."),
+        ("Análisis de Riesgo Estocástico & Sensibilidad: ", "Simulación de Monte Carlo (400 a 4.000 escenarios) con histograma de probabilidad de VAN positivo, diagrama de Tornado ('Qué variable mueve más el resultado') y matrices cruzadas de calor."),
+        ("Comparador Multi-Proyecto Lado a Lado: ", "Contraste sinóptico de múltiples variantes de potencia o clientes simultáneos."),
+        ("Pipeline Comercial & Revisiones Congeladas: ", "Gestión de ventas estilo Kanban (Borrador a Ganada) con ponderación probabilística, congelamiento inmutable de revisiones históricas y papelera de reciclaje."),
+        ("Tablero Gerencial & Business Intelligence: ", "Métricas consolidadas de cartera en MWp y U$D, embudo de conversión, desglose por provincia y vendedor, y alertas automáticas de cotizaciones estancadas."),
+        ("Propuesta Comercial Multicanal Ejecutiva: ", "Generación de cotizaciones formales con membrete y logo corporativo, ficha satelital 3D, gráficos vectoriales SVG, y exportación a PDF, HTML autónomo, WhatsApp y Email."),
     ]
     for bold_text, normal_text in bullets_s1:
         p = doc.add_paragraph(style='List Bullet')
@@ -254,15 +259,16 @@ def build_manual():
     doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
     # -------------------------------------------------------------
-    # SECCIÓN 3: GUÍA PASO A PASO DE LAS 7 PESTAÑAS
+    # SECCIÓN 3: GUÍA PASO A PASO DE LAS 10 PESTAÑAS
     # -------------------------------------------------------------
-    h1 = doc.add_heading("3. Guía Paso a Paso de las 7 Pestañas de Análisis", level=1)
+    h1 = doc.add_heading("3. Guía Paso a Paso de las 10 Pestañas de la Plataforma", level=1)
     h1.runs[0].font.color.rgb = RGBColor(0, 159, 227)
     
     # Pestaña 1
-    doc.add_heading("3.1. Pestaña 📋 Datos & Asistente de Dimensionamiento", level=2)
+    doc.add_heading("3.1. Pestaña 📋 Datos, BOM Detallado y Chequeos Inteligentes", level=2)
     doc.add_paragraph(
-        "Es el punto de entrada para parametrizar el proyecto. Contiene formularios declarativos y herramientas de cálculo avanzadas:"
+        "Es el centro neurálgico de ingeniería y parametrización de la plataforma. Integra formularios declarativos, "
+        "asistentes geométricos, desglose de costos ítem por ítem (BOM) y un auditor de reglas técnicas en tiempo real:"
     )
     
     doc.add_heading("A. Asistente de Techado y Superficie (Herramienta Desplegable):", level=3)
@@ -301,12 +307,12 @@ def build_manual():
 
     doc.add_heading("B. Secciones del Formulario General:", level=3)
     secciones_form = [
-        ("Cliente y Emplazamiento: ", "Razón social, CUIT, ubicación y selector de ciudad argentina para autocompletar la radiación solar anual."),
-        ("Generación Fotovoltaica: ", "Potencia kWp, costo unitario (U$D/kWp), tipo de cambio ($/USD), Performance Ratio (PR %), irradiación anual y degradación de paneles (%/año)."),
-        ("Almacenamiento con Baterías (BESS): ", "Habilitación de banco de acumulación, tecnología (Litio LFP / Gel), capacidad en kWh, costo unitario (U$D/kWh) y profundidad de descarga (DoD %). El sistema calcula automáticamente la autonomía de respaldo en horas."),
-        ("Tarifa Eléctrica e Impuestos: ", "Tarifa monómica de energía ($/kWh) y tabla de impuestos provinciales/municipales con presets automáticos para EPE Santa Fe, Edenor/Edesur, EDEN, EPEC Córdoba, etc. Modalidad de inyección remunerada de excedentes."),
-        ("Parámetros Macroeconómicos: ", "Horizonte de vida útil (20 a 30 años), tasa de descuento exigida (WACC %), aumento anual de tarifa (inflación energética %), OPEX anual (% CAPEX) y recambio programado de inversores."),
-        ("Financiamiento por Leasing: ", "Canon mensual por kWp, plazo en meses (12 a 120), pago inicial de anticipo, valor residual / opción de compra, seguro anual, mantenimiento anual y alícuota deducible del Impuesto a las Ganancias (30% o 35%)."),
+        ("Cliente y Emplazamiento: ", "Razón social, CUIT (con validación de dígito verificador Módulo 11), ubicación y selector de ciudad argentina para autocompletar la radiación solar anual y coordenadas satelitales."),
+        ("Generación Fotovoltaica: ", "Potencia kWp, costo unitario (U$D/kWp), tipo de cambio ($/USD), Performance Ratio (PR %), irradiación anual en plano y degradación anual de paneles (%/año)."),
+        ("Almacenamiento con Baterías (BESS): ", "Habilitación de banco de acumulación, tecnología (Litio LFP / Gel Plomo-Ácido), capacidad en kWh, costo unitario (U$D/kWh) y profundidad de descarga máxima (DoD %). El sistema modela el ciclado diario y la autonomía en horas ante cortes de red."),
+        ("Tarifa Eléctrica e Impuestos: ", "Tarifa monómica de energía ($/kWh) o desglose por bandas horarias (Pico, Resto, Valle), potencia contratada e impuestos provinciales/municipales con presets oficiales para EPE Santa Fe, Edenor/Edesur, EDEN, EPEC Córdoba, etc. Modalidad de inyección remunerada según Ley 27.424."),
+        ("Parámetros Macroeconómicos: ", "Horizonte de evaluación (20 a 30 años), tasa de descuento exigida (WACC %), ajuste anual de tarifas eléctricas (inflación energética %), OPEX anual (% CAPEX) y ciclos de recambio de inversores y baterías."),
+        ("Condiciones Financieras: ", "Parámetros para Leasing (canon por kWp, plazo en meses, anticipo, opción residual, seguro y deducción en Ganancias), Préstamos bancarios (Francés/Alemán/UVA y CFT) y contratos PPA."),
     ]
     for bold_text, normal_text in secciones_form:
         p = doc.add_paragraph(style='List Bullet')
@@ -314,6 +320,47 @@ def build_manual():
         r_b.bold = True
         r_b.font.color.rgb = RGBColor(0, 159, 227)
         p.add_run(normal_text)
+
+    doc.add_heading("C. Presupuesto Detallado por Ítems (BOM - Bill of Materials):", level=3)
+    doc.add_paragraph(
+        "Al tildar 'Presupuesto detallado por ítems', el sistema desactiva el costo global fijo y habilita una planilla analítica "
+        "de cómputo y presupuesto de obra donde cada componente se cotiza por unidad o por kWp instalado:"
+    )
+    bom_items = [
+        ("Módulos Fotovoltaicos: ", "Cómputo automático según cantidad de paneles y potencia unitaria (U$D/panel o U$D/Wp)."),
+        ("Inversores On-Grid / Híbridos: ", "Unidades de inversores centrales o microinversores, dimensionados para la potencia pico de campo."),
+        ("Estructuras de Montaje: ", "Rieles de aluminio extruido, grampas intermedias/finales, triángulos fijos o anclajes a chapa grecada."),
+        ("Protecciones Eléctricas DC/AC: ", "Tableros seccionadores, fusibles gPV, descargadores de sobretensión transitoria (SPD Tipo II), termomagnéticas y disyuntores diferenciales."),
+        ("Cableado Solar y Conectores: ", "Cables unipolares solares de 4/6 mm² con aislación reticulada resistente a UV, conectores MC4 y canalizaciones."),
+        ("Mano de Obra e Ingeniería: ", "Instalación electromecánica, izajes, puesta en marcha, ensayos y tramitación del certificado de Usuario-Generador ante la distribuidora."),
+        ("Almacenamiento BESS (opcional): ", "Módulos de baterías de litio ferrofosfato (LiFePO4) o gel con rack y BMS.")
+    ]
+    for bold_text, normal_text in bom_items:
+        p = doc.add_paragraph(style='List Bullet')
+        r_b = p.add_run(bold_text)
+        r_b.bold = True
+        r_b.font.color.rgb = RGBColor(0, 159, 227)
+        p.add_run(normal_text)
+    doc.add_paragraph(
+        "El presupuesto suma automáticamente los subtotales, calcula el CAPEX final del proyecto y actualiza el ratio U$D/kWp resultante."
+    )
+
+    doc.add_heading("D. Panel de Chequeos Inteligentes (Semáforo de Validación):", level=3)
+    doc.add_paragraph(
+        "Ubicado en la parte superior de la pestaña Datos, el panel de Chequeos Inteligentes evalúa de forma continua más de 12 reglas "
+        "de consistencia técnica y normativa, alertando antes de presentar la cotización:"
+    )
+    chequeos_data = [
+        ("🟢 Proyecto Coherente", "Todos los parámetros de potencia, módulos, relaciones DC/AC y marco fiscal se encuentran dentro de los estándares óptimos de ingeniería."),
+        ("🟡 Advertencias Técnicas", "Avisa situaciones no críticas pero que requieren atención: ej. sobredimensionamiento DC/AC > 1.30 (posible recorte de potencia en horas pico), inyección sin precio asignado o sobrecarga cercana al límite de la cubierta."),
+        ("🔴 Inconsistencias Críticas", "Detecta errores graves: ej. potencia contratada insuficiente para la inyección proyectada, CUIT inválido, o parámetros económicos negativos.")
+    ]
+    for sem, desc in chequeos_data:
+        p = doc.add_paragraph(style='List Bullet')
+        r_b = p.add_run(sem + ": ")
+        r_b.bold = True
+        r_b.font.color.rgb = RGBColor(0, 159, 227)
+        p.add_run(desc)
 
     doc.add_page_break()
 
@@ -435,15 +482,42 @@ def build_manual():
     doc.add_page_break()
 
     # Pestaña 5
-    doc.add_heading("3.5. Pestaña 🏦 Leasing vs. Compra al Contado", level=2)
+    doc.add_heading("3.5. Pestaña 🏦 Financiamiento: Comparador 4 Vías (Contado, Leasing ALP, Préstamos y PPA)", level=2)
     doc.add_paragraph(
-        "Permite presentar una alternativa de financiamiento donde el cliente no inmoviliza capital inicial elevado:"
+        "Permite contrastar de manera simultánea cuatro modalidades de financiamiento e inversión para proyectos solares corporativos, "
+        "todas expresadas en dólares constantes con ahorros proyectados y descontadas a la tasa WACC:"
     )
+    
+    t_fin_comp = doc.add_table(rows=5, cols=3)
+    t_fin_comp.alignment = WD_TABLE_ALIGNMENT.CENTER
+    t_fin_comp.cell(0, 0).text = "Modalidad"
+    t_fin_comp.cell(0, 1).text = "Esquema de Desembolso y Propiedad"
+    t_fin_comp.cell(0, 2).text = "Beneficio Clave y Ventaja Fiscal"
+    format_row(t_fin_comp.rows[0], "009FE3", RGBColor(255, 255, 255), is_bold=True, font_size=9.5)
+    
+    fin_comp_data = [
+        ("1. Compra al Contado (Llave en mano)", "100% de desembolso inicial (CAPEX). El cliente es dueño del activo desde el día 1.", "Mayor ahorro monetario acumulado y máximo VAN a 25-30 años."),
+        ("2. Leasing ALP (No bancario)", "Desembolso inicial reducido (anticipo). Cuotas mensuales fijas por kWp con seguro y O&M incluidos. Opción de compra final.", "100% de la cuota deducible del Impuesto a las Ganancias (alícuota 30-35%). No compromete márgenes crediticios bancarios."),
+        ("3. Préstamo Bancario Tradicional", "Financiamiento del 70% al 100% del CAPEX. Sistemas Francés, Alemán o UVA en pesos/dólares con cálculo de CFT.", "El cliente conserva capital de trabajo. Amortización del bien e intereses de deuda son deducibles impositivamente."),
+        ("4. Contrato PPA (Power Purchase)", "Desembolso inicial U$D 0. El cliente compra los kWh solares a una tarifa pactada inferior a la de red.", "Ahorro operativo desde el primer mes sin asumir riesgos de operación ni deuda financiera.")
+    ]
+    for i, fila in enumerate(fin_comp_data):
+        for j, val in enumerate(fila):
+            t_fin_comp.cell(i+1, j).text = val
+        format_row(t_fin_comp.rows[i+1], "F8FAFC" if i % 2 == 0 else "FFFFFF", RGBColor(51, 65, 85), is_bold=False, font_size=9)
+        t_fin_comp.rows[i+1].cells[0].paragraphs[0].runs[0].bold = True
+    
+    t_fin_comp.columns[0].width = Inches(1.8)
+    t_fin_comp.columns[1].width = Inches(2.7)
+    t_fin_comp.columns[2].width = Inches(2.5)
+
+    doc.add_paragraph().paragraph_format.space_after = Pt(4)
+    doc.add_heading("Detalle Operativo del Leasing ALP:", level=3)
     bullets_s4 = [
-        ("Flujo Neto Mensual: ", "Compara el ahorro eléctrico mensual generado por los paneles frente a la cuota integral de leasing (canon + seguro + mantenimiento). Si el ahorro mensual supera la cuota, el proyecto se autofinancia desde el mes 1."),
-        ("Escudo Fiscal en Ganancias: ", "Calcula el ahorro impositivo resultante de deducir el canon, seguro y mantenimiento de la base imponible del Impuesto a las Ganancias (alícuota del 30% o 35%)."),
-        ("Desglose del Costo Total: ", "Tabla de desglose: Pago inicial + Suma de cánones + Seguros + Mantenimientos + Opción de compra final − Ahorro en Ganancias = Costo Neto del Leasing."),
-        ("Gráfico de Flujo Comparativo: ", "Curva acumulada año por año enfrentando la opción Contado vs. Leasing."),
+        ("Flujo Neto Mensual: ", "Compara mes a mes el ahorro en factura eléctrica vs. la cuota integral del leasing (canon + seguro + mantenimiento). Si el ahorro supera la cuota, el proyecto tiene flujo de caja positivo inmediato."),
+        ("Escudo Fiscal en Ganancias: ", "Calcula el crédito fiscal neto generado al computar el gasto de cánones, seguro y mantenimiento como gasto operativo directo en el balance impositivo."),
+        ("Conmutador de Moneda: ", "Permite evaluar el detalle del leasing en USD (U$D) o en ARS ($) al tipo de cambio proyectado."),
+        ("Gráfico Acumulado Contado vs. Leasing: ", "Curva acumulada que muestra el cruce de ambos esquemas y el costo de oportunidad del capital."),
     ]
     for bold_text, normal_text in bullets_s4:
         p = doc.add_paragraph(style='List Bullet')
@@ -453,35 +527,105 @@ def build_manual():
         p.add_run(normal_text)
 
     # Pestaña 6
-    doc.add_heading("3.6. Pestaña 🎯 Análisis de Sensibilidad y Matrices de Riesgo", level=2)
+    doc.add_heading("3.6. Pestaña 🎯 Riesgo: Simulación Monte Carlo, Gráfico de Tornado y Matrices", level=2)
     doc.add_paragraph(
-        "Evalúa la robustez del proyecto ante variaciones del entorno macroeconómico y de precios mediante dos matrices cruzadas de mapa de calor:"
+        "Evalúa la solidez y volatilidad del proyecto frente al contexto macroeconómico argentino a través de tres herramientas analíticas complementarias:"
     )
+
+    doc.add_heading("A. Simulación Estocástica de Monte Carlo:", level=3)
     doc.add_paragraph(
-        "• Matriz 1 (Tarifa vs. CAPEX): Evalúa simultáneamente variaciones de -20% a +20% en el precio de la energía eléctrica y de -15% a +15% en el costo de instalación (U$D/kWp), mostrando el VAN resultante en cada intersección.\n"
-        "• Matriz 2 (Inflación Tarifaria vs. Tasa de Descuento): Evalúa el VAN combinando tasas de descuento del 6% al 15% con distintos ritmos de ajuste tarifario anual."
+        "A diferencia de los modelos estáticos que muestran un único valor de VAN, la simulación de Monte Carlo ejecuta miles de sorteos probabilísticos "
+        "modificando simultáneamente seis factores inciertos (irradiación solar ±4%, tarifa eléctrica ±10%, CAPEX ±8%, actualización tarifaria ±5 p.p., devaluación ±5 p.p. y degradación de paneles) "
+        "mediante distribuciones gaussianas con el método polar de Box-Muller y semilla reproducible."
     )
+    bullets_mc = [
+        ("Selector de Escenarios: ", "Permite elegir entre 400 (rápido para tablets), 1.000 (estándar recomendado) y 4.000 escenarios (alta precisión para directorios)."),
+        ("Probabilidad de Éxito P(VAN > 0): ", "Porcentaje exacto de escenarios donde el proyecto resulta económicamente rentable. Un valor > 90% indica robustez extrema."),
+        ("Percentiles P10, P50 y P90: ", "P10 representa el escenario pesimista (90% de probabilidad de superarlo), P50 la mediana esperada y P90 el escenario optimista."),
+        ("Histograma de Frecuencia de VAN: ", "Gráfico de barras que representa la distribución del VAN con línea divisoria roja en U$D 0."),
+    ]
+    for bold_text, normal_text in bullets_mc:
+        p = doc.add_paragraph(style='List Bullet')
+        r_b = p.add_run(bold_text)
+        r_b.bold = True
+        r_b.font.color.rgb = RGBColor(0, 159, 227)
+        p.add_run(normal_text)
+
+    doc.add_heading("B. Gráfico de Tornado ('Qué variable mueve más el resultado'):", level=3)
+    doc.add_paragraph(
+        "Aísla cada variable moviéndola ±1.5 desvíos estándar (±1.5σ) mientras mantiene las demás en su valor base. "
+        "Ordena las variables de mayor a menor amplitud de VAN, indicando a la dirección qué parámetros deben negociarse prioritariamente "
+        "(generalmente actualización tarifaria y tipo de cambio en el mercado local)."
+    )
+
+    doc.add_heading("C. Matrices de Sensibilidad Cruzada (Mapas de Calor):", level=3)
+    doc.add_paragraph(
+        "• Matriz 1 (Tarifa vs. CAPEX): Cruza variaciones de -20% a +20% en la tarifa con variaciones de -15% a +15% en el costo de instalación (U$D/kWp).\n"
+        "• Matriz 2 (Inflación Tarifaria vs. Tasa de Descuento): Cruza tasas de descuento del 6% al 15% con distintos ritmos de ajuste tarifario anual."
+    )
+
+    doc.add_page_break()
 
     # Pestaña 7
     doc.add_heading("3.7. Pestaña ⚖️ Comparador Multi-Proyecto Lado a Lado", level=2)
     doc.add_paragraph(
-        "Permite seleccionar varios proyectos o variantes de potencia guardadas (ej: 10 kWp vs. 30 kWp vs. 50 kWp) y compararlos en una sola tabla sinóptica "
-        "evaluando CAPEX, generación anual, cobertura, VAN, TIR, Payback, LCOE y canon de leasing."
+        "Permite seleccionar varios proyectos o variantes de potencia guardadas (ej: 30 kWp sin baterías vs. 30 kWp con BESS vs. 60 kWp para venta a red) "
+        "y compararlos en una sola tabla sinóptica evaluando CAPEX, generación anual, cobertura de demanda, VAN, TIR, Payback simple y descontado, LCOE y cuota de leasing."
     )
 
     # Pestaña 8
-    doc.add_heading("3.8. Pestaña 📄 Propuesta Comercial Ejecutiva (PDF Imprimible)", level=2)
+    doc.add_heading("3.8. Pestaña 📌 Pipeline Comercial, Revisiones Congeladas y Papelera", level=2)
     doc.add_paragraph(
-        "Genera una cotización formal ejecutiva lista para entregar al cliente. Incluye:"
+        "Proporciona un entorno de gestión comercial especializado para hacer seguimiento de las cotizaciones a lo largo de su ciclo de vida:"
+    )
+    bullets_pipe = [
+        ("Tablero Kanban Interactivo: ", "Organiza los proyectos en 5 columnas visuales: Borrador (10% de probabilidad), Enviada (30%), En negociación (60%), Ganada (100%) y Perdida (0%)."),
+        ("Ponderación Automática de Cartera: ", "Calcula el valor esperado del pipeline multiplicando el CAPEX por la probabilidad asignada a la etapa."),
+        ("Función '📎 Congelar Revisión': ", "Permite generar una copia inmutable del proyecto (Rev. 0, Rev. 1, etc.) en el momento de entregar la cotización al cliente. Si más adelante se modifican parámetros tarifarios o técnicos en el proyecto activo, las revisiones congeladas permanecen intactas para consulta y trazabilidad histórica."),
+        ("Historial de Revisiones: ", "Tabla con fecha, autor, potencia, CAPEX y VAN de cada versión entregada al cliente."),
+        ("Papelera de Reciclaje ('🗑 Papelera'): ", "Resguarda proyectos eliminados accidentalmente, con opción de recuperación inmediata."),
+    ]
+    for bold_text, normal_text in bullets_pipe:
+        p = doc.add_paragraph(style='List Bullet')
+        r_b = p.add_run(bold_text)
+        r_b.bold = True
+        r_b.font.color.rgb = RGBColor(0, 159, 227)
+        p.add_run(normal_text)
+
+    # Pestaña 9
+    doc.add_heading("3.9. Pestaña 📊 Tablero Gerencial, Embudo de Ventas y Alertas de Seguimiento", level=2)
+    doc.add_paragraph(
+        "Diseñado para gerentes de ventas y directores de proyectos, consolida la información de todos los proyectos activos en un panel de Business Intelligence:"
+    )
+    bullets_tablero = [
+        ("Tarjetas de KPIs Consolidados: ", "Potencia total cotizada (MWp), Monto total de cartera en U$D, Pipeline ponderado según probabilidades y Tasa de conversión (Win Rate % de proyectos ganados sobre presentados)."),
+        ("Gráfico de Potencia Cotizada por Mes: ", "Histograma temporal que revela el ritmo de generación de presupuestos y la estacionalidad del negocio."),
+        ("Gráfico de Embudo Comercial (Funnel): ", "Visualización de la tasa de retención entre etapas (Borrador → Enviada → Negociación → Cierre)."),
+        ("Desglose Geográfico por Provincia: ", "Tabla con la distribución de potencia y clientes en Santa Fe, Buenos Aires, Córdoba, CABA, etc."),
+        ("Rendimiento por Asesor Comercial: ", "Ranking de proyectos y volumen cotizado por cada vendedor del equipo."),
+        ("Módulo de Alertas ('Necesitan Atención'): ", "Algoritmo proactivo que detecta automáticamente propuestas enviadas con más de 15 días sin respuesta o negociaciones estancadas con más de 30 días sin avance, sugiriendo acciones de seguimiento comercial."),
+    ]
+    for bold_text, normal_text in bullets_tablero:
+        p = doc.add_paragraph(style='List Bullet')
+        r_b = p.add_run(bold_text)
+        r_b.bold = True
+        r_b.font.color.rgb = RGBColor(0, 159, 227)
+        p.add_run(normal_text)
+
+    # Pestaña 10
+    doc.add_heading("3.10. Pestaña 📄 Propuesta Comercial Ejecutiva (PDF / HTML / WhatsApp / Email)", level=2)
+    doc.add_paragraph(
+        "Genera una cotización formal ejecutiva de alto impacto estético, lista para su presentación o envío a clientes corporativos:"
     )
     bullets_s7 = [
-        ("Membrete Oficial: ", "Logo de ALP GROUP, datos de la empresa, asesor responsable, teléfono, email y plazo de validez de la oferta en días."),
-        ("Ficha Técnica del Cliente & Obra: ", "Razón social, CUIT, ubicación, tipo de instalación y especificaciones de paneles, potencia pico y baterías."),
+        ("Membrete y Branding Oficial: ", "Logotipo corporativo de ALP GROUP o de la empresa partner, datos fiscales, asesor responsable y plazo de validez de la oferta en días."),
+        ("Ficha Técnica del Cliente & Emplazamiento: ", "Razón social, CUIT, ciudad, tipo de instalación y especificaciones de módulos, potencia pico y baterías BESS."),
+        ("Ficha Satelital 3D & Métricas de Cubierta: ", "Incorpora la captura fotorrealista del gemelo digital 3D obtenida en la pestaña Techo 3D ('📸 Foto 3D'), superficie útil de techo (m²), azimut, inclinación y factor de ocupación."),
         ("Gráficos Vectoriales SVG Integrados: ", "Gráfico de barras de balance energético mensual y gráfico de curva de retorno financiero acumulado con el punto de Payback señalado."),
-        ("Comparativa Económica de Doble Opción: ", "Resumen lado a lado de Compra Directa (Llave en mano) vs. Financiamiento por Leasing."),
-        ("Insignia de Certificación Ambiental: ", "Distintivo ecológico destacando el aporte a la descarbonización y árboles equivalentes."),
+        ("Comparativa Económica de Doble Opción: ", "Resumen lado a lado de Compra Directa (Llave en mano) vs. Financiamiento por Leasing ALP."),
+        ("Insignia de Certificación Ambiental ESG: ", "Distintivo ecológico destacando el aporte a la descarbonización, CO₂ evitado y árboles equivalentes."),
         ("Bloque de Firmas Formales: ", "Líneas de firma para el responsable técnico de ALP GROUP y conformidad del cliente."),
-        ("Botón 'Imprimir / Guardar en PDF': ", "Estilizado con reglas @media print para generar un PDF impecable sin barras ni elementos de interfaz."),
+        ("Exportación Multicanal en 1 Clic: ", "Botón '🖨 Imprimir / Guardar en PDF' (formato A4 sin menús), botón '⬇ Descargar HTML' (archivo autónomo portable), botón '💬 WhatsApp' (abre chat con mensaje estructurado y métricas) y botón '✉ Email' (abre correo preformateado)."),
     ]
     for bold_text, normal_text in bullets_s7:
         p = doc.add_paragraph(style='List Bullet')
@@ -1149,12 +1293,16 @@ def build_manual():
     faqs = [
         ("¿Cómo guardar un proyecto de forma segura?", 
          "Podés presionar '💾 Guardar' o utilizar el atajo de teclado Ctrl+S. Si estás en modo local, se guarda en el navegador; si estás en modo nube, se sincroniza en la base de datos de Supabase."),
+        ("¿Cómo hacer seguimiento comercial y congelar una versión entregada?", 
+         "En la pestaña '📌 Pipeline', podés mover la oportunidad entre las etapas del embudo comercial (Borrador, Enviada, Negociación, Ganada). Al enviar una cotización formal al cliente, presioná '📎 Congelar revisión'. El sistema creará una copia histórica inmutable (Rev. 0, Rev. 1, etc.) preservando intactos los valores cotizados para auditoría o comparaciones futuras."),
+        ("¿Cómo interpretar la simulación de Monte Carlo y el gráfico de Tornado?", 
+         "En la pestaña '🎯 Riesgo', presioná '▶ Correr simulación'. El indicador P(VAN > 0) te indica la probabilidad matemática de rentabilidad sorteando miles de escenarios combinados. En el Gráfico de Tornado, las barras más anchas señalan los factores macroeconómicos o de ingeniería que más mueven el VAN, marcando prioridades para la negociación comercial."),
         ("¿Qué hacer si un cliente tiene consumos estacionales variables?", 
          "En la pestaña '⚡ Energía y CO₂', podés editar manualmente los kWh de consumo de cada uno de los 12 meses del año según las facturas históricas del cliente."),
         ("¿Cómo modificar el membrete o logotipo de la empresa?", 
          "En la barra superior, hacé clic en '🏢 Membrete'. Podés cargar un nuevo archivo de imagen (PNG/JPG), actualizar el nombre de la empresa, el asesor asignado, teléfono, email y validez de la oferta."),
         ("¿Cómo exportar la propuesta comercial a un cliente?", 
-         "Ingresá a la pestaña '📄 Propuesta Comercial' y hacé clic en '🖨 Imprimir / Guardar en PDF'. Seleccioná la impresora 'Guardar como PDF' en tu navegador para generar un documento ejecutivo listo para enviar por email o WhatsApp."),
+         "Ingresá a la pestaña '📄 Propuesta' y elegí entre '🖨 Imprimir / Guardar en PDF' (formato limpio A4), '⬇ Descargar HTML' (archivo interactivo sin conexión), '💬 WhatsApp' (mensaje estructurado con métricas de ahorro) o '✉ Email'."),
         ("¿Cómo duplicar un proyecto para evaluar dos potencias distintas?", 
          "Abrí el proyecto base y presioná '⧉ Duplicar'. Se creará una copia independiente ('Proyecto (copia)') donde podrás cambiar la potencia o los parámetros sin alterar el original.")
     ]
