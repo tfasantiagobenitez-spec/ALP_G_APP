@@ -1669,32 +1669,48 @@
         return;
       }
 
-      if (!window.UI || !UI.estado) {
+      const p = (window.UI && UI.estado) ? UI.estado : null;
+      if (!p) {
         alert('No hay un proyecto activo seleccionado.');
         return;
       }
 
-      const p = UI.estado;
       const d = state.distribucion;
 
-      // Inyectar datos en el proyecto
-      p.potenciaInstaladaKwp = d.potenciaKwp;
-      p.cantidadModulos = d.count;
-      p.potenciaModuloWp = state.potenciaPanelWp;
-      p.inclinacion = state.inclinacionDeg;
-      p.azimut = d.azimutDeg;
+      // Inyectar datos en el modelo del proyecto (campos estándar de Calc.js y app.js)
+      p.kwp = String(d.potenciaKwp);
+      p.presu_paneles = String(d.count);
+      p.panel_w = String(state.potenciaPanelWp);
+      p.inclinacion = String(state.inclinacionDeg);
+      p.azimut = String(d.azimutDeg);
+      p.lat = String(state.lat);
+      p.lon = String(state.lng);
+      p.tipoInst = state.tipoNave === 'losa' ? 'losa' : state.tipoNave === 'suelo' ? 'tierra' : 'chapa';
 
-      // Inyectar factor de pérdida por sombras calculado del 3D
-      if (p.perdidas) {
-        p.perdidas.sombras = Math.max(0.5, Math.round(state.perdidaSombrasAnualPct * 10) / 10);
+      // Si el proyecto usa generación estimada, recalcular la serie mensual con la nueva potencia
+      if (p.genFuente === 'estimada' && window.Calc) {
+        const norm = Calc.normalizar(p);
+        p.genM = JSON.stringify(Calc.estimarGeneracion(norm.kwp, norm.irrad, norm.pr));
       }
+
+      // Guardar el estado completo 3D dentro del proyecto
       p.techo3d = guardarEstado();
+
+      // Sincronizar inputs visibles de la pestaña Datos si existen en el DOM
+      const fKwp = document.getElementById('f_kwp'); if (fKwp) fKwp.value = p.kwp;
+      const fPan = document.getElementById('f_presu_paneles'); if (fPan) fPan.value = p.presu_paneles;
+      const fPw = document.getElementById('f_panel_w'); if (fPw) fPw.value = p.panel_w;
+      const fInc = document.getElementById('f_inclinacion'); if (fInc) fInc.value = p.inclinacion;
+      const fAz = document.getElementById('f_azimut'); if (fAz) fAz.value = p.azimut;
 
       if (typeof window.marcarDirty === 'function') {
         window.marcarDirty();
       }
 
-      // Notificar y recalcular
+      if (typeof window.renderDatos === 'function') {
+        window.renderDatos();
+      }
+
       if (typeof window.recalcular === 'function') {
         window.recalcular();
       }
@@ -1840,6 +1856,10 @@
 
   function cargarEstado(datos) {
     if (!datos) return;
+    if (typeof datos === 'string') {
+      try { datos = JSON.parse(datos); } catch (e) { return; }
+    }
+    if (!datos || typeof datos !== 'object') return;
     if (datos.lat !== undefined) state.lat = datos.lat;
     if (datos.lng !== undefined) state.lng = datos.lng;
     if (datos.zoom !== undefined) state.zoom = datos.zoom;

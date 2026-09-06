@@ -1464,9 +1464,12 @@
       </div>
 
       ${(() => {
-        const t3d = (UI.estado && UI.estado.techo3d)
+        let t3d = (UI.estado && UI.estado.techo3d)
           ? UI.estado.techo3d
           : (typeof UITecho3D !== 'undefined' ? UITecho3D.obtenerResumen() : null);
+        if (typeof t3d === 'string') {
+          try { t3d = JSON.parse(t3d); } catch (e) { t3d = null; }
+        }
         const tieneT3d = t3d && (t3d.cantidadPaneles > 0 || (t3d.puntosPoligono && t3d.puntosPoligono.length >= 3));
         if (!tieneT3d) return '';
         const snapshot = t3d.snapshotDataUrl || (t3d.distribucion && t3d.distribucion.snapshotDataUrl);
@@ -2247,6 +2250,12 @@
     const bWa = $('#btnCompartirWhatsapp'); if (bWa) bWa.onclick = compartirWhatsapp;
     const bMail = $('#btnCompartirEmail'); if (bMail) bMail.onclick = compartirEmail;
     const bHtml = $('#btnDescargarHtml'); if (bHtml) bHtml.onclick = descargarPropuestaHTML;
+
+    // Publicar puente para módulos externos (UITecho3D, etc.)
+    window.UI = UI;
+    window.recalcular = recalcular;
+    window.marcarDirty = marcarDirty;
+    window.renderDatos = renderDatos;
 
     // El módulo de gestión necesita leer el estado de la app y pedirle acciones
     UIGestion.init({
