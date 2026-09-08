@@ -17,16 +17,32 @@ create table if not exists public.perfiles (
   creado_en    timestamptz not null default now()
 );
 
--- Crea el perfil automáticamente al registrarse. El primer usuario es admin.
+-- Aprobación manual de cuentas.
+-- Registrarse no alcanza para entrar: hace falta que un administrador habilite
+-- la cuenta. Se agrega en dos pasos para que las cuentas que ya existían queden
+-- aprobadas y solo las nuevas nazcan pendientes.
+alter table public.perfiles add column if not exists aprobado boolean not null default true;
+alter table public.perfiles alter column aprobado set default false;
+alter table public.perfiles add column if not exists aprobado_en timestamptz;
+alter table public.perfiles add column if not exists aprobado_por uuid references public.perfiles(id);
+create index if not exists perfiles_pendientes_idx on public.perfiles (creado_en) where not aprobado;
+
+-- Crea el perfil automáticamente al registrarse.
+-- El primer usuario de una base vacía queda como administrador aprobado, porque
+-- si no nadie podría habilitar a nadie. Todos los demás nacen pendientes.
 create or replace function public.crear_perfil()
 returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  es_primero boolean := (select count(*) from public.perfiles) = 0;
 begin
-  insert into public.perfiles (id, nombre, email, rol)
+  insert into public.perfiles (id, nombre, email, rol, aprobado, aprobado_en)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'nombre', split_part(new.email, '@', 1)),
     new.email,
-    case when (select count(*) from public.perfiles) = 0 then 'admin'::rol_usuario else 'vendedor'::rol_usuario end
+    case when es_primero then 'admin'::rol_usuario else 'vendedor'::rol_usuario end,
+    es_primero,
+    case when es_primero then now() else null end
   );
   return new;
 end $$;
@@ -35,20 +51,55 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users for each row execute function public.crear_perfil();
 
+-- Impide que alguien se apruebe o se ascienda a sí mismo.
+-- Las políticas de fila dejan editar el perfil propio (para cambiar el nombre),
+-- así que el rol y la aprobación se revierten cuando quien edita es un usuario
+-- logueado que no es administrador.
+--
+-- Cuando auth.uid() es nulo no hay sesión: es el dueño del proyecto entrando por
+-- el editor SQL o con la clave de servicio. A ese acceso no tiene sentido
+-- frenarlo, porque podría desactivar el disparador de todos modos.
+create or replace function public.proteger_perfil()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  puede boolean := auth.uid() is null or public.es_admin();
+begin
+  if not puede then
+    new.rol := old.rol;
+    new.aprobado := old.aprobado;
+    new.aprobado_en := old.aprobado_en;
+    new.aprobado_por := old.aprobado_por;
+  elsif new.aprobado is distinct from old.aprobado then
+    new.aprobado_en := case when new.aprobado then now() else null end;
+    new.aprobado_por := case when new.aprobado then auth.uid() else null end;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists perfiles_proteger on public.perfiles;
+create trigger perfiles_proteger before update on public.perfiles
+  for each row execute function public.proteger_perfil();
+
 -- Helpers de rol (security definer para no recursar en las políticas)
 create or replace function public.mi_rol()
 returns rol_usuario language sql stable security definer set search_path = public as $$
   select rol from public.perfiles where id = auth.uid();
 $$;
 
+-- Una cuenta sin aprobar no puede ver ni tocar nada, sea cual sea su rol.
+create or replace function public.esta_aprobado()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select aprobado from public.perfiles where id = auth.uid()), false);
+$$;
+
 create or replace function public.es_admin()
 returns boolean language sql stable security definer set search_path = public as $$
-  select coalesce((select rol = 'admin' from public.perfiles where id = auth.uid()), false);
+  select coalesce((select rol = 'admin' and aprobado from public.perfiles where id = auth.uid()), false);
 $$;
 
 create or replace function public.puede_editar()
 returns boolean language sql stable security definer set search_path = public as $$
-  select coalesce((select rol in ('admin', 'vendedor') from public.perfiles where id = auth.uid()), false);
+  select coalesce((select rol in ('admin', 'vendedor') and aprobado from public.perfiles where id = auth.uid()), false);
 $$;
 
 -- ---------- Clientes ----------
@@ -239,7 +290,8 @@ alter table public.auditoria      enable row level security;
 
 -- Perfiles
 drop policy if exists perfiles_select on public.perfiles;
-create policy perfiles_select on public.perfiles for select to authenticated using (true);
+create policy perfiles_select on public.perfiles for select to authenticated
+  using (id = auth.uid() or public.esta_aprobado());
 drop policy if exists perfiles_update_propio on public.perfiles;
 create policy perfiles_update_propio on public.perfiles for update to authenticated
   using (id = auth.uid() or public.es_admin())
@@ -247,7 +299,7 @@ create policy perfiles_update_propio on public.perfiles for update to authentica
 
 -- Clientes
 drop policy if exists clientes_select on public.clientes;
-create policy clientes_select on public.clientes for select to authenticated using (true);
+create policy clientes_select on public.clientes for select to authenticated using (public.esta_aprobado());
 drop policy if exists clientes_insert on public.clientes;
 create policy clientes_insert on public.clientes for insert to authenticated with check (public.puede_editar());
 drop policy if exists clientes_update on public.clientes;
@@ -257,21 +309,21 @@ create policy clientes_delete on public.clientes for delete to authenticated usi
 
 -- Distribuidoras
 drop policy if exists distribuidoras_select on public.distribuidoras;
-create policy distribuidoras_select on public.distribuidoras for select to authenticated using (true);
+create policy distribuidoras_select on public.distribuidoras for select to authenticated using (public.esta_aprobado());
 drop policy if exists distribuidoras_admin on public.distribuidoras;
 create policy distribuidoras_admin on public.distribuidoras for all to authenticated
   using (public.es_admin()) with check (public.es_admin());
 
 -- Empresa (membrete): todo el equipo lo lee, solo un admin lo edita
 drop policy if exists empresa_select on public.empresa;
-create policy empresa_select on public.empresa for select to authenticated using (true);
+create policy empresa_select on public.empresa for select to authenticated using (public.esta_aprobado());
 drop policy if exists empresa_admin on public.empresa;
 create policy empresa_admin on public.empresa for all to authenticated
   using (public.es_admin()) with check (public.es_admin());
 
 -- Proyectos
 drop policy if exists proyectos_select on public.proyectos;
-create policy proyectos_select on public.proyectos for select to authenticated using (true);
+create policy proyectos_select on public.proyectos for select to authenticated using (public.esta_aprobado());
 --   Alternativa "cada uno ve lo suyo" (reemplazar la política anterior):
 --   create policy proyectos_select on public.proyectos for select to authenticated
 --     using (creado_por = auth.uid() or public.es_admin());
@@ -287,7 +339,7 @@ create policy proyectos_delete on public.proyectos for delete to authenticated
 -- Revisiones: las ve todo el equipo, las crea quien puede editar y nadie las modifica.
 -- Una revisión congelada que se pueda editar no sirve para nada.
 drop policy if exists propuestas_select on public.propuestas;
-create policy propuestas_select on public.propuestas for select to authenticated using (true);
+create policy propuestas_select on public.propuestas for select to authenticated using (public.esta_aprobado());
 drop policy if exists propuestas_insert on public.propuestas;
 create policy propuestas_insert on public.propuestas for insert to authenticated with check (public.puede_editar());
 drop policy if exists propuestas_delete on public.propuestas;
@@ -295,7 +347,7 @@ create policy propuestas_delete on public.propuestas for delete to authenticated
 
 -- Catálogo y lista de precios: lo consulta todo el equipo, lo mantiene un admin
 drop policy if exists productos_select on public.productos;
-create policy productos_select on public.productos for select to authenticated using (true);
+create policy productos_select on public.productos for select to authenticated using (public.esta_aprobado());
 drop policy if exists productos_admin on public.productos;
 create policy productos_admin on public.productos for all to authenticated
   using (public.es_admin()) with check (public.es_admin());

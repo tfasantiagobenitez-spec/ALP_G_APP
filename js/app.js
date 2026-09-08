@@ -548,8 +548,12 @@
       $('#btnLogout').hidden = true; $('#btnMigrar').hidden = true;
       return;
     }
-    el.innerHTML = u ? `<span class="chip chip-nube">☁ nube</span> <b>${esc(u.nombre)}</b> <span class="hint">${esc(u.rol)}</span>` : '';
+    el.innerHTML = u
+      ? `<span class="chip chip-nube">☁ nube</span> <b>${esc(u.nombre)}</b> ` +
+        (u.aprobado ? `<span class="hint">${esc(u.rol)}</span>` : '<span class="chip chip-espera">pendiente</span>')
+      : '';
     $('#btnLogout').hidden = !u;
+    actualizarBadgePendientes();
     $('#btnMigrar').hidden = !u || !DB.puedeEditar() || DB.localPendientes() === 0;
   }
 
@@ -1817,6 +1821,148 @@
   }
 
   // =====================================================================
+  //  Cuentas del equipo: pantalla de espera y panel de aprobación
+  // =====================================================================
+  function mostrarPendiente(ver, u) {
+    const el = $('#pendiente');
+    if (!el) return;
+    el.hidden = !ver;
+    if (ver && u) {
+      const em = $('#pendienteEmail');
+      if (em) em.textContent = u.email || '';
+    }
+  }
+
+  /** Vuelve a leer el perfil por si un administrador habilitó la cuenta recién. */
+  async function reintentarAcceso() {
+    const btn = $('#btnReintentarAcceso');
+    if (btn) { btn.disabled = true; btn.textContent = 'Consultando…'; }
+    try {
+      const u = await DB.refrescarPerfil();
+      if (u && u.aprobado) {
+        toast('Cuenta habilitada. Bienvenido.');
+        await alCambiarUsuario(u);
+      } else {
+        toast('Todavía no está habilitada. Probá de nuevo en un rato.');
+      }
+    } catch (e) {
+      alert('No se pudo consultar el estado de la cuenta: ' + e.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Reintentar'; }
+    }
+  }
+
+  const ROLES = [
+    ['admin', 'Administrador', 'Habilita cuentas, edita el membrete y el catálogo'],
+    ['vendedor', 'Vendedor', 'Crea y edita sus propios proyectos'],
+    ['lector', 'Lector', 'Solo consulta, no puede modificar nada'],
+  ];
+
+  async function abrirUsuarios() {
+    const modal = $('#modalUsuarios');
+    const cont = $('#usuariosCuerpo');
+    if (!modal || !cont) return;
+    cont.innerHTML = '<p class="hint">Cargando…</p>';
+    modal.hidden = false;
+    await renderUsuarios();
+  }
+
+  function cerrarUsuarios() { const m = $('#modalUsuarios'); if (m) m.hidden = true; }
+
+  async function renderUsuarios() {
+    const cont = $('#usuariosCuerpo');
+    if (!cont) return;
+    let lista = [];
+    try { lista = await DB.usuarios.list(); }
+    catch (e) { cont.innerHTML = '<p class="hint">No se pudo leer el equipo: ' + esc(e.message) + '</p>'; return; }
+
+    const yo = DB.usuario();
+    const pendientes = lista.filter(x => !x.aprobado);
+    const activas = lista.filter(x => x.aprobado);
+
+    const fila = u => {
+      const esYo = yo && u.id === yo.id;
+      return `<tr class="${u.aprobado ? '' : 'fila-pendiente'}">
+        <td>
+          <b>${esc(u.nombre || u.email)}</b>${esYo ? ' <span class="chip">vos</span>' : ''}
+          <div class="hint">${esc(u.email || '')}</div>
+        </td>
+        <td>
+          <select data-rol="${esc(u.id)}" ${esYo ? 'disabled title="No podés cambiarte el rol a vos misma"' : ''}>
+            ${ROLES.map(([v, n]) => `<option value="${v}" ${u.rol === v ? 'selected' : ''}>${n}</option>`).join('')}
+          </select>
+        </td>
+        <td>${esc(DB.fechaFmt(u.creado_en).split(',')[0])}</td>
+        <td>
+          ${u.aprobado
+            ? `<span class="chip chip-ok">Habilitada</span>`
+            : `<span class="chip chip-espera">Pendiente</span>`}
+        </td>
+        <td class="fila-acciones">
+          ${esYo ? '<span class="hint">—</span>' : (u.aprobado
+            ? `<button type="button" class="btn btn-sm btn-peligro" data-bloquear="${esc(u.id)}">Bloquear</button>`
+            : `<button type="button" class="btn btn-sm btn-primario" data-aprobar="${esc(u.id)}">Habilitar</button>`)}
+        </td>
+      </tr>`;
+    };
+
+    cont.innerHTML = `
+      ${pendientes.length
+        ? `<div class="aviso aviso-atencion"><b>${pendientes.length} cuenta${pendientes.length > 1 ? 's' : ''} esperando aprobación.</b>
+             Mientras estén pendientes no ven ningún cliente ni proyecto.</div>`
+        : '<div class="aviso aviso-ok"><b>No hay cuentas esperando.</b> Todas las del equipo están habilitadas.</div>'}
+      <table class="tabla">
+        <thead><tr><th>Persona</th><th>Rol</th><th>Se registró</th><th>Estado</th><th></th></tr></thead>
+        <tbody>${pendientes.map(fila).join('')}${activas.map(fila).join('')}</tbody>
+      </table>
+      <p class="hint">El rol define qué puede hacer una vez habilitada. Un lector solo consulta; un vendedor crea y edita sus proyectos; un administrador además habilita cuentas y edita el membrete y el catálogo.</p>`;
+
+    $$('#usuariosCuerpo [data-aprobar]').forEach(b => {
+      b.onclick = () => cambiarAprobacion(b.dataset.aprobar, true);
+    });
+    $$('#usuariosCuerpo [data-bloquear]').forEach(b => {
+      b.onclick = () => {
+        if (!confirm('Bloquear esta cuenta.\n\nDeja de ver clientes y proyectos de inmediato, pero no se borra. ¿Seguir?')) return;
+        cambiarAprobacion(b.dataset.bloquear, false);
+      };
+    });
+    $$('#usuariosCuerpo [data-rol]').forEach(s => {
+      s.onchange = async () => {
+        try {
+          await DB.usuarios.cambiarRol(s.dataset.rol, s.value);
+          toast('Rol actualizado');
+          await renderUsuarios();
+        } catch (e) { alert('No se pudo cambiar el rol: ' + e.message); await renderUsuarios(); }
+      };
+    });
+  }
+
+  async function cambiarAprobacion(id, aprobado) {
+    try {
+      await DB.usuarios.aprobar(id, aprobado);
+      toast(aprobado ? 'Cuenta habilitada' : 'Cuenta bloqueada');
+      await renderUsuarios();
+      await actualizarBadgePendientes();
+    } catch (e) { alert('No se pudo actualizar la cuenta: ' + e.message); }
+  }
+
+  /** Marca en la barra superior cuántas cuentas están esperando. */
+  async function actualizarBadgePendientes() {
+    const btn = $('#btnUsuarios');
+    const badge = $('#badgePendientes');
+    if (!btn || !badge) return;
+    if (DB.modo !== 'nube' || !DB.esAdmin()) { btn.hidden = true; return; }
+    btn.hidden = false;
+    try {
+      const lista = await DB.usuarios.list();
+      const n = lista.filter(x => !x.aprobado).length;
+      badge.hidden = n === 0;
+      badge.textContent = n;
+      btn.title = n ? n + ' cuenta(s) esperando aprobación' : 'Habilitar cuentas y asignar roles';
+    } catch (e) { badge.hidden = true; }
+  }
+
+  // =====================================================================
   //  Compartir y exportar la propuesta
   // =====================================================================
 
@@ -2067,8 +2213,25 @@
 
   async function alCambiarUsuario(u) {
     renderUsuario();
-    if (DB.modo === 'nube' && !u) { mostrarLogin(true); UI.proyectos = []; UI.estado = null; UI.id = null; renderTodo(); return; }
+    if (DB.modo === 'nube' && !u) {
+      mostrarPendiente(false);
+      mostrarLogin(true);
+      UI.proyectos = []; UI.estado = null; UI.id = null;
+      renderTodo();
+      return;
+    }
     mostrarLogin(false);
+
+    // Registrarse no alcanza: hasta que un administrador habilite la cuenta,
+    // la aplicación no carga nada. Las políticas de la base ya lo impiden;
+    // esto es para que la persona entienda por qué no ve nada.
+    if (DB.modo === 'nube' && u && !u.aprobado) {
+      mostrarPendiente(true, u);
+      UI.proyectos = []; UI.estado = null; UI.id = null;
+      renderTodo();
+      return;
+    }
+    mostrarPendiente(false);
     await cargarMembrete();
     await cargarTodo();
     if (UI.proyectos.length) await abrir(UI.proyectos[0].id);
@@ -2245,6 +2408,10 @@
     $('#btnRellenarCon').onclick = rellenarConsumo;
     const bRiesgo = $('#btnCorrerRiesgo'); if (bRiesgo) bRiesgo.onclick = correrRiesgo;
     const bPap = $('#btnVerPapelera'); if (bPap) bPap.onclick = UIGestion.abrirPapelera;
+    const bUsr = $('#btnUsuarios'); if (bUsr) bUsr.onclick = abrirUsuarios;
+    const bCerrarUsr = $('#btnCerrarUsuarios'); if (bCerrarUsr) bCerrarUsr.onclick = cerrarUsuarios;
+    const bReint = $('#btnReintentarAcceso'); if (bReint) bReint.onclick = reintentarAcceso;
+    const bSalirPend = $('#btnSalirPendiente'); if (bSalirPend) bSalirPend.onclick = () => DB.logout();
     const bCerrarPap = $('#btnCerrarPapelera'); if (bCerrarPap) bCerrarPap.onclick = UIGestion.cerrarPapelera;
     const bRev = $('#btnCongelarRevision'); if (bRev) bRev.onclick = UIGestion.congelarRevision;
     const bWa = $('#btnCompartirWhatsapp'); if (bWa) bWa.onclick = compartirWhatsapp;

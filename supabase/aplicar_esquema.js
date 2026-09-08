@@ -35,11 +35,13 @@ const ARCHIVO_SQL = path.join(__dirname, 'schema.sql');
 
 const args = process.argv.slice(2);
 const soloVerificar = args.includes('--verificar');
+const forzar = args.includes('--forzar');
 const refArg = args.indexOf('--ref') >= 0 ? args[args.indexOf('--ref') + 1] : null;
 
 // Tablas y columnas que este esquema agrega, para poder verificar el resultado
 const TABLAS = ['perfiles', 'clientes', 'distribuidoras', 'proyectos', 'empresa', 'propuestas', 'productos', 'auditoria'];
 const COLUMNAS_PIPELINE = ['estado_comercial', 'probabilidad', 'motivo_perdida', 'fecha_envio', 'fecha_cierre', 'eliminado_en'];
+const COLUMNAS_PERFIL = ['aprobado', 'aprobado_en', 'aprobado_por'];
 
 function leerConfig() {
   const cfg = fs.readFileSync(path.join(RAIZ, 'js', 'config.js'), 'utf8');
@@ -58,13 +60,16 @@ async function verificar(cfg) {
     const r = await fetch(`${cfg.url}/rest/v1/${t}?select=*&limit=1`, { headers: cab });
     if (r.status === 404) faltan.tablas.push(t);
   }
-  if (faltan.tablas.indexOf('proyectos') < 0) {
-    for (const c of COLUMNAS_PIPELINE) {
-      const r = await fetch(`${cfg.url}/rest/v1/proyectos?select=${c}&limit=1`, { headers: cab });
+  const revisarColumnas = async (tabla, columnas) => {
+    if (faltan.tablas.indexOf(tabla) >= 0) return;
+    for (const c of columnas) {
+      const r = await fetch(`${cfg.url}/rest/v1/${tabla}?select=${c}&limit=1`, { headers: cab });
       const cuerpo = await r.text();
-      if (/does not exist|42703/.test(cuerpo)) faltan.columnas.push(c);
+      if (/does not exist|42703/.test(cuerpo)) faltan.columnas.push(tabla + '.' + c);
     }
-  }
+  };
+  await revisarColumnas('proyectos', COLUMNAS_PIPELINE);
+  await revisarColumnas('perfiles', COLUMNAS_PERFIL);
   return faltan;
 }
 
@@ -74,7 +79,7 @@ function informar(faltan) {
     return true;
   }
   if (faltan.tablas.length) console.log('  Faltan tablas:   ' + faltan.tablas.join(', '));
-  if (faltan.columnas.length) console.log('  Faltan columnas: proyectos.' + faltan.columnas.join(', proyectos.'));
+  if (faltan.columnas.length) console.log('  Faltan columnas: ' + faltan.columnas.join(', '));
   return false;
 }
 
@@ -128,8 +133,9 @@ async function main() {
   const completo = informar(antes);
 
   if (soloVerificar) process.exit(completo ? 0 : 1);
-  if (completo) {
-    console.log('\nNo hay nada que aplicar.');
+  if (completo && !forzar) {
+    console.log('\nNo hay nada que aplicar. Usá --forzar para volver a correr el esquema igual');
+    console.log('(por ejemplo si cambiaron las políticas de seguridad, que desde afuera no se ven).');
     process.exit(0);
   }
 

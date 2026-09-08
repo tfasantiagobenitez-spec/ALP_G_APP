@@ -31,6 +31,7 @@
       <button class="btn" id="btnExportarTodo" title="Descargar todos los proyectos en JSON">⬇ Exportar todo</button>
       <button class="btn" id="btnConfigMembrete" title="Configurar datos y logo de tu empresa para la propuesta">🏢 Membrete</button>
       <a href="Manual_de_Usuario_Simulador_FV_ALP_GROUP.docx" download="Manual_de_Usuario_Simulador_FV_ALP_GROUP.docx" class="btn btn-destacado" id="btnManual" title="Descargar Manual de Usuario (Word .docx)" style="text-decoration: none;">📖 Manual del Usuario</a>
+      <button class="btn" id="btnUsuarios" title="Habilitar cuentas y asignar roles" hidden>👥 Cuentas<span class="badge-pendientes" id="badgePendientes" hidden></span></button>
       <button class="btn btn-icon" id="btnTema" title="Cambiar modo claro / oscuro">🌙</button>
       <button class="btn" id="btnMigrar" title="Subir a la nube los proyectos guardados en este navegador" hidden>☁ Subir locales</button>
       <button class="btn" id="btnLogout" hidden>Salir</button>
@@ -373,6 +374,40 @@
         <button class="btn btn-primario" type="submit">Guardar membrete</button>
       </div>
     </form>
+  </div>
+
+  <!-- Cuenta registrada pero todavía sin habilitar -->
+  <div id="pendiente" class="overlay" hidden>
+    <div class="modal-card">
+      <div class="brand" style="justify-content: center; flex-direction: column; gap: 8px;">
+        <img src="img/logo.svg" alt="ALP GROUP" style="height: 38px; width: auto;" onerror="this.onerror=null; this.src='img/logo.png'">
+        <div style="font-size: 14px; font-weight: 600; color: var(--texto-2);">Simulador Fotovoltaico</div>
+      </div>
+      <div class="pendiente-icono">🔒</div>
+      <h3 style="text-align: center; text-transform: none; color: var(--texto); font-size: 16px; margin: 0;">Tu cuenta está esperando aprobación</h3>
+      <p class="hint" style="text-align: center;">
+        Registramos <b id="pendienteEmail"></b>. Un administrador tiene que habilitarla antes de que puedas ver los proyectos del equipo.
+      </p>
+      <p class="hint" style="text-align: center;">
+        Avisale a quien administra el simulador para que te habilite. Cuando lo haga, tocá Reintentar.
+      </p>
+      <div class="fila-acciones" style="justify-content: center; margin-top: 6px;">
+        <button class="btn btn-primario" type="button" id="btnReintentarAcceso">🔄 Reintentar</button>
+        <button class="btn" type="button" id="btnSalirPendiente">Salir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Administración de cuentas del equipo -->
+  <div id="modalUsuarios" class="overlay" hidden>
+    <div class="modal-card modal-ancho">
+      <div class="brand">👥 Cuentas del equipo</div>
+      <p class="hint">Las cuentas nuevas quedan pendientes hasta que las habilites. Una cuenta pendiente no ve ningún cliente ni proyecto.</p>
+      <div class="scroll" id="usuariosCuerpo"></div>
+      <div class="fila-acciones" style="justify-content: flex-end; margin-top: 10px;">
+        <button class="btn" type="button" id="btnCerrarUsuarios">Cerrar</button>
+      </div>
+    </div>
   </div>
 
   <!-- Papelera de proyectos eliminados -->

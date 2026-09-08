@@ -139,8 +139,14 @@
     modo: 'local',
     async init() { return true; },
     onAuth() { },
-    usuario() { return { id: 'local', nombre: 'Uso local', email: '', rol: 'admin' }; },
+    usuario() { return { id: 'local', nombre: 'Uso local', email: '', rol: 'admin', aprobado: true }; },
     puedeEditar() { return true; },
+    esAdmin() { return true; },
+    usuarios: {
+      async list() { return []; },
+      async aprobar() { throw new Error('La aprobación de cuentas solo existe en modo nube'); },
+      async cambiarRol() { throw new Error('Los roles solo existen en modo nube'); },
+    },
     async login() { }, async registro() { }, async logout() { },
 
     proyectos: {
@@ -320,12 +326,56 @@
       const { data } = await this.client.from('perfiles').select('*').eq('id', this.sesion.user.id).maybeSingle();
       this.perfil = data || null;
     },
+    /** Vuelve a leer el perfil: sirve para que una cuenta recién habilitada entre sin volver a loguearse. */
+    async refrescarPerfil() {
+      if (!this.sesion) return null;
+      await this._cargarPerfil();
+      return this.usuario();
+    },
     usuario() {
       if (!this.sesion) return null;
       const u = this.sesion.user;
-      return { id: u.id, email: u.email, nombre: (this.perfil && this.perfil.nombre) || u.email, rol: (this.perfil && this.perfil.rol) || 'vendedor' };
+      const p = this.perfil;
+      return {
+        id: u.id,
+        email: u.email,
+        nombre: (p && p.nombre) || u.email,
+        rol: (p && p.rol) || 'vendedor',
+        // Una cuenta recién registrada existe pero todavía no fue habilitada.
+        // Si el perfil no se pudo leer, se asume pendiente: nunca al revés.
+        aprobado: !!(p && p.aprobado),
+        perfilLeido: !!p,
+      };
     },
-    puedeEditar() { const u = this.usuario(); return !!u && u.rol !== 'lector'; },
+    puedeEditar() { const u = this.usuario(); return !!u && u.aprobado && u.rol !== 'lector'; },
+    esAdmin() { const u = this.usuario(); return !!u && u.aprobado && u.rol === 'admin'; },
+
+    usuarios: {
+      /** Directorio del equipo. Solo devuelve algo si quien pregunta está aprobado. */
+      async list() {
+        const { data, error } = await Nube.client.from('perfiles')
+          .select('id, nombre, email, rol, aprobado, creado_en, aprobado_en, aprobado_por')
+          .order('aprobado', { ascending: true })
+          .order('creado_en', { ascending: false });
+        if (error) throw new Error(error.message);
+        return data;
+      },
+      /** Habilita o vuelve a bloquear una cuenta. Las marcas de quién y cuándo las pone un disparador. */
+      async aprobar(id, aprobado) {
+        const { data, error } = await Nube.client.from('perfiles')
+          .update({ aprobado: !!aprobado }).eq('id', id).select();
+        if (error) throw new Error(traducir(error.message));
+        if (!data || !data.length) throw new Error('Solo un administrador puede habilitar cuentas');
+        return data[0];
+      },
+      async cambiarRol(id, rol) {
+        const { data, error } = await Nube.client.from('perfiles')
+          .update({ rol }).eq('id', id).select();
+        if (error) throw new Error(traducir(error.message));
+        if (!data || !data.length) throw new Error('Solo un administrador puede cambiar roles');
+        return data[0];
+      },
+    },
     async login(email, password) {
       const { error } = await this.client.auth.signInWithPassword({ email, password });
       if (error) throw new Error(traducir(error.message));
@@ -560,6 +610,7 @@
     if (/already registered/i.test(m)) return 'Ese email ya está registrado';
     if (/Password should be/i.test(m)) return 'La contraseña debe tener al menos 6 caracteres';
     if (/rate limit/i.test(m)) return 'Demasiados intentos, esperá un minuto';
+    if (/row-level security|violates row-level/i.test(m)) return 'Tu usuario no tiene permiso para esta acción';
     return m;
   }
 
@@ -580,6 +631,11 @@
     onAuth(cb) { this.adaptador.onAuth(cb); },
     usuario() { return this.adaptador.usuario(); },
     puedeEditar() { return this.adaptador.puedeEditar(); },
+    esAdmin() { return this.adaptador.esAdmin(); },
+    get usuarios() { return this.adaptador.usuarios; },
+    refrescarPerfil() {
+      return this.adaptador.refrescarPerfil ? this.adaptador.refrescarPerfil() : Promise.resolve(this.usuario());
+    },
     login(e, p) { return this.adaptador.login(e, p); },
     registro(e, p, n) { return this.adaptador.registro(e, p, n); },
     logout() { return this.adaptador.logout(); },
